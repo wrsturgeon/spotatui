@@ -4,6 +4,10 @@ use super::{
 };
 use crate::event::Key;
 use crate::network::IoEvent;
+use rspotify::model::{
+  idtypes::{PlayContextId, PlaylistId, TrackId},
+  PlayableId,
+};
 use rand::{thread_rng, Rng};
 use serde_json::from_value;
 
@@ -53,8 +57,9 @@ pub fn handler(key: Key, app: &mut App) {
                 if let Some(playlist_tracks) = &app.playlist_tracks {
                   if app.playlist_offset + app.large_search_limit < playlist_tracks.total {
                     app.playlist_offset += app.large_search_limit;
-                    let playlist_id = selected_playlist.id.to_owned();
-                    app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+                    if let Some(playlist_id) = playlist_id_static(&selected_playlist.id) {
+                      app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+                    }
                   }
                 }
               }
@@ -79,11 +84,12 @@ pub fn handler(key: Key, app: &mut App) {
               if let Some(playlist_tracks) = &app.made_for_you_tracks {
                 if app.made_for_you_offset + app.large_search_limit < playlist_tracks.total {
                   app.made_for_you_offset += app.large_search_limit;
-                  let playlist_id = selected_playlist.id.to_owned();
-                  app.dispatch(IoEvent::GetMadeForYouPlaylistItems(
-                    playlist_id,
-                    app.made_for_you_offset,
-                  ));
+                  if let Some(playlist_id) = playlist_id_static(&selected_playlist.id) {
+                    app.dispatch(IoEvent::GetMadeForYouPlaylistItems(
+                      playlist_id,
+                      app.made_for_you_offset,
+                    ));
+                  }
                 }
               }
             }
@@ -106,8 +112,9 @@ pub fn handler(key: Key, app: &mut App) {
               if let Some(selected_playlist) =
                 playlists.items.get(selected_playlist_index.to_owned())
               {
-                let playlist_id = selected_playlist.id.to_owned();
-                app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+                if let Some(playlist_id) = playlist_id_static(&selected_playlist.id) {
+                  app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+                }
               }
             };
           }
@@ -130,11 +137,12 @@ pub fn handler(key: Key, app: &mut App) {
               app.made_for_you_offset -= app.large_search_limit;
             }
             if let Some(selected_playlist) = playlists.items.get(selected_playlist_index) {
-              let playlist_id = selected_playlist.id.to_owned();
-              app.dispatch(IoEvent::GetMadeForYouPlaylistItems(
-                playlist_id,
-                app.made_for_you_offset,
-              ));
+              if let Some(playlist_id) = playlist_id_static(&selected_playlist.id) {
+                app.dispatch(IoEvent::GetMadeForYouPlaylistItems(
+                  playlist_id,
+                  app.made_for_you_offset,
+                ));
+              }
             }
           }
         },
@@ -158,13 +166,13 @@ fn play_random_song(app: &mut App) {
   if let Some(context) = &app.track_table.context {
     match context {
       TrackTableContext::MyPlaylists => {
-        let (context_uri, track_json) = match (&app.selected_playlist_index, &app.playlists) {
+        let (context_id, track_json) = match (&app.selected_playlist_index, &app.playlists) {
           (Some(selected_playlist_index), Some(playlists)) => {
             if let Some(selected_playlist) = playlists.items.get(selected_playlist_index.to_owned())
             {
               (
-                Some(selected_playlist.id.to_string()),
-                Some(selected_playlist.tracks.total),
+                playlist_context_id(&selected_playlist.id),
+                Some(selected_playlist.tracks.total.clone()),
               )
             } else {
               (None, None)
@@ -176,7 +184,7 @@ fn play_random_song(app: &mut App) {
         if let Some(val) = track_json {
           let num_tracks: usize = from_value(val.clone()).unwrap();
           app.dispatch(IoEvent::StartPlayback(
-            context_uri,
+            context_id,
             None,
             Some(thread_rng().gen_range(0..num_tracks)),
           ));
@@ -185,22 +193,24 @@ fn play_random_song(app: &mut App) {
       TrackTableContext::RecommendedTracks => {}
       TrackTableContext::SavedTracks => {
         if let Some(saved_tracks) = &app.library.saved_tracks.get_results(None) {
-          let track_uris: Vec<String> = saved_tracks
+          let playable_ids: Vec<PlayableId<'static>> = saved_tracks
             .items
             .iter()
-            .map(|item| item.track.uri.to_owned())
+            .filter_map(|item| track_playable_id(item.track.id.clone()))
             .collect();
-          let rand_idx = thread_rng().gen_range(0..track_uris.len());
-          app.dispatch(IoEvent::StartPlayback(
-            None,
-            Some(track_uris),
-            Some(rand_idx),
-          ))
+          if !playable_ids.is_empty() {
+            let rand_idx = thread_rng().gen_range(0..playable_ids.len());
+            app.dispatch(IoEvent::StartPlayback(
+              None,
+              Some(playable_ids),
+              Some(rand_idx),
+            ))
+          }
         }
       }
       TrackTableContext::AlbumSearch => {}
       TrackTableContext::PlaylistSearch => {
-        let (context_uri, playlist_track_json) = match (
+        let (context_id, playlist_track_json) = match (
           &app.search_results.selected_playlists_index,
           &app.search_results.playlists,
         ) {
@@ -210,7 +220,7 @@ fn play_random_song(app: &mut App) {
               .get(selected_playlist_index.to_owned())
             {
               (
-                Some(selected_playlist.uri.to_owned()),
+                playlist_context_id(&selected_playlist.id),
                 selected_playlist.tracks.get("total"),
               )
             } else {
@@ -222,7 +232,7 @@ fn play_random_song(app: &mut App) {
         if let Some(val) = playlist_track_json {
           let num_tracks: usize = from_value(val.clone()).unwrap();
           app.dispatch(IoEvent::StartPlayback(
-            context_uri,
+            context_id,
             None,
             Some(thread_rng().gen_range(0..num_tracks)),
           ))
@@ -240,9 +250,9 @@ fn play_random_song(app: &mut App) {
             .get("total")
             .and_then(|total| -> Option<usize> { from_value(total.clone()).ok() })
           {
-            let uri = Some(playlist.uri.clone());
+            let context_id = playlist_context_id(&playlist.id);
             app.dispatch(IoEvent::StartPlayback(
-              uri,
+              context_id,
               None,
               Some(thread_rng().gen_range(0..*num_tracks)),
             ))
@@ -256,10 +266,9 @@ fn play_random_song(app: &mut App) {
 fn handle_save_track_event(app: &mut App) {
   let (selected_index, tracks) = (&app.track_table.selected_index, &app.track_table.tracks);
   if let Some(track) = tracks.get(*selected_index) {
-    if let Some(id) = &track.id {
-      let id = id.to_string();
-      app.dispatch(IoEvent::ToggleSaveTrack(id));
-    };
+    if let Some(playable_id) = track_playable_id(track.id.clone()) {
+      app.dispatch(IoEvent::ToggleSaveTrack(playable_id));
+    }
   };
 }
 
@@ -292,8 +301,9 @@ fn jump_to_end(app: &mut App) {
 
             if app.large_search_limit < total_tracks {
               app.playlist_offset = total_tracks - (total_tracks % app.large_search_limit);
-              let playlist_id = selected_playlist.id.to_owned();
-              app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+              if let Some(playlist_id) = playlist_id_static(&selected_playlist.id) {
+                app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+              }
             }
           }
         }
@@ -318,47 +328,50 @@ fn on_enter(app: &mut App) {
     Some(context) => match context {
       TrackTableContext::MyPlaylists => {
         if let Some(_track) = tracks.get(*selected_index) {
-          let context_uri = match (&app.active_playlist_index, &app.playlists) {
+          let context_id = match (&app.active_playlist_index, &app.playlists) {
             (Some(active_playlist_index), Some(playlists)) => playlists
               .items
               .get(active_playlist_index.to_owned())
-              .map(|selected_playlist| selected_playlist.uri.to_owned()),
+              .and_then(|selected_playlist| playlist_context_id(&selected_playlist.id)),
             _ => None,
           };
 
           app.dispatch(IoEvent::StartPlayback(
-            context_uri,
+            context_id,
             None,
             Some(app.track_table.selected_index + app.playlist_offset as usize),
           ));
         };
       }
       TrackTableContext::RecommendedTracks => {
-        app.dispatch(IoEvent::StartPlayback(
-          None,
-          Some(
-            app
-              .recommended_tracks
-              .iter()
-              .map(|x| x.uri.clone())
-              .collect::<Vec<String>>(),
-          ),
-          Some(app.track_table.selected_index),
-        ));
+        let playable_ids: Vec<PlayableId<'static>> = app
+          .recommended_tracks
+          .iter()
+          .filter_map(|track| track_playable_id(track.id.clone()))
+          .collect();
+        if !playable_ids.is_empty() {
+          app.dispatch(IoEvent::StartPlayback(
+            None,
+            Some(playable_ids),
+            Some(app.track_table.selected_index),
+          ));
+        }
       }
       TrackTableContext::SavedTracks => {
         if let Some(saved_tracks) = &app.library.saved_tracks.get_results(None) {
-          let track_uris: Vec<String> = saved_tracks
+          let playable_ids: Vec<PlayableId<'static>> = saved_tracks
             .items
             .iter()
-            .map(|item| item.track.uri.to_owned())
+            .filter_map(|item| track_playable_id(item.track.id.clone()))
             .collect();
 
-          app.dispatch(IoEvent::StartPlayback(
-            None,
-            Some(track_uris),
-            Some(app.track_table.selected_index),
-          ));
+          if !playable_ids.is_empty() {
+            app.dispatch(IoEvent::StartPlayback(
+              None,
+              Some(playable_ids),
+              Some(app.track_table.selected_index),
+            ));
+          }
         };
       }
       TrackTableContext::AlbumSearch => {}
@@ -369,19 +382,19 @@ fn on_enter(app: &mut App) {
           ..
         } = &app.track_table;
         if let Some(_track) = tracks.get(*selected_index) {
-          let context_uri = match (
+          let context_id = match (
             &app.search_results.selected_playlists_index,
             &app.search_results.playlists,
           ) {
             (Some(selected_playlist_index), Some(playlist_result)) => playlist_result
               .items
               .get(selected_playlist_index.to_owned())
-              .map(|selected_playlist| selected_playlist.uri.to_owned()),
+              .and_then(|selected_playlist| playlist_context_id(&selected_playlist.id)),
             _ => None,
           };
 
           app.dispatch(IoEvent::StartPlayback(
-            context_uri,
+            context_id,
             None,
             Some(app.track_table.selected_index),
           ));
@@ -389,21 +402,17 @@ fn on_enter(app: &mut App) {
       }
       TrackTableContext::MadeForYou => {
         if let Some(_track) = tracks.get(*selected_index) {
-          let context_uri = Some(
-            app
-              .library
-              .made_for_you_playlists
-              .get_results(Some(0))
-              .unwrap()
-              .items
-              .get(app.made_for_you_index)
-              .unwrap()
-              .uri
-              .to_owned(),
-          );
+          let context_id = app
+            .library
+            .made_for_you_playlists
+            .get_results(Some(0))
+            .unwrap()
+            .items
+            .get(app.made_for_you_index)
+            .and_then(|playlist| playlist_context_id(&playlist.id));
 
           app.dispatch(IoEvent::StartPlayback(
-            context_uri,
+            context_id,
             None,
             Some(app.track_table.selected_index + app.made_for_you_offset as usize),
           ));
@@ -424,21 +433,24 @@ fn on_queue(app: &mut App) {
     Some(context) => match context {
       TrackTableContext::MyPlaylists => {
         if let Some(track) = tracks.get(*selected_index) {
-          let uri = track.uri.clone();
-          app.dispatch(IoEvent::AddItemToQueue(uri));
+          if let Some(playable_id) = track_playable_id(track.id.clone()) {
+            app.dispatch(IoEvent::AddItemToQueue(playable_id));
+          }
         };
       }
       TrackTableContext::RecommendedTracks => {
         if let Some(full_track) = app.recommended_tracks.get(app.track_table.selected_index) {
-          let uri = full_track.uri.clone();
-          app.dispatch(IoEvent::AddItemToQueue(uri));
+          if let Some(playable_id) = track_playable_id(full_track.id.clone()) {
+            app.dispatch(IoEvent::AddItemToQueue(playable_id));
+          }
         }
       }
       TrackTableContext::SavedTracks => {
         if let Some(page) = app.library.saved_tracks.get_results(None) {
           if let Some(saved_track) = page.items.get(app.track_table.selected_index) {
-            let uri = saved_track.track.uri.clone();
-            app.dispatch(IoEvent::AddItemToQueue(uri));
+            if let Some(playable_id) = track_playable_id(saved_track.track.id.clone()) {
+              app.dispatch(IoEvent::AddItemToQueue(playable_id));
+            }
           }
         }
       }
@@ -450,14 +462,16 @@ fn on_queue(app: &mut App) {
           ..
         } = &app.track_table;
         if let Some(track) = tracks.get(*selected_index) {
-          let uri = track.uri.clone();
-          app.dispatch(IoEvent::AddItemToQueue(uri));
+          if let Some(playable_id) = track_playable_id(track.id.clone()) {
+            app.dispatch(IoEvent::AddItemToQueue(playable_id));
+          }
         };
       }
       TrackTableContext::MadeForYou => {
         if let Some(track) = tracks.get(*selected_index) {
-          let uri = track.uri.clone();
-          app.dispatch(IoEvent::AddItemToQueue(uri));
+          if let Some(playable_id) = track_playable_id(track.id.clone()) {
+            app.dispatch(IoEvent::AddItemToQueue(playable_id));
+          }
         }
       }
     },
@@ -474,8 +488,9 @@ fn jump_to_start(app: &mut App) {
         {
           if let Some(selected_playlist) = playlists.items.get(selected_playlist_index.to_owned()) {
             app.playlist_offset = 0;
-            let playlist_id = selected_playlist.id.to_owned();
-            app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+            if let Some(playlist_id) = playlist_id_static(&selected_playlist.id) {
+              app.dispatch(IoEvent::GetPlaylistItems(playlist_id, app.playlist_offset));
+            }
           }
         }
       }
@@ -487,4 +502,16 @@ fn jump_to_start(app: &mut App) {
     },
     None => {}
   }
+}
+
+fn playlist_id_static(id: &Option<PlaylistId<'_>>) -> Option<PlaylistId<'static>> {
+  id.clone().map(|playlist_id| playlist_id.into_static())
+}
+
+fn playlist_context_id(id: &Option<PlaylistId<'_>>) -> Option<PlayContextId<'static>> {
+  playlist_id_static(id).map(PlayContextId::Playlist)
+}
+
+fn track_playable_id(id: Option<TrackId<'_>>) -> Option<PlayableId<'static>> {
+  id.map(|track_id| PlayableId::Track(track_id.into_static()))
 }
