@@ -11,7 +11,7 @@ use clap::ArgMatches;
 
 // Handle the different subcommands
 pub async fn handle_matches(
-  matches: &ArgMatches,
+  matches: &ArgMatches<'_>,
   cmd: String,
   net: Network,
   config: UserConfig,

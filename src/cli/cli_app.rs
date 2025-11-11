@@ -5,7 +5,12 @@ use super::util::{Flag, Format, FormatType, JumpDirection, Type};
 
 use anyhow::{anyhow, Result};
 use rand::{thread_rng, Rng};
-use rspotify::model::{context::CurrentPlaybackContext, PlayableItem};
+use rspotify::model::{
+  context::CurrentPlaybackContext,
+  idtypes::{Id, PlayContextId, PlayableId},
+  PlayableItem,
+};
+use rspotify::prelude::*;
 
 pub struct CliApp {
   pub net: Network,
@@ -23,13 +28,17 @@ impl CliApp {
 
   async fn is_a_saved_track(&mut self, id: &str) -> bool {
     // Update the liked_song_ids_set
-    self
-      .net
-      .handle_network_event(IoEvent::CurrentUserSavedTracksContains(
-        vec![id.to_string()],
-      ))
-      .await;
-    self.net.app.lock().await.liked_song_ids_set.contains(id)
+    if let Ok(track_id) = rspotify::model::idtypes::TrackId::from_id(id) {
+      self
+        .net
+        .handle_network_event(IoEvent::CurrentUserSavedTracksContains(vec![
+          track_id.into_static()
+        ]))
+        .await;
+      self.net.app.lock().await.liked_song_ids_set.contains(id)
+    } else {
+      false
+    }
   }
 
   pub fn format_output(&self, mut format: String, values: Vec<Format>) -> String {
@@ -67,17 +76,16 @@ impl CliApp {
     }) = &app.current_playback_context
     {
       match item {
-        PlayableItem::Track(track) => Ok(format!(
-          "https://open.spotify.com/track/{}",
-          track
-            .id
-            .clone()
-            .map(|id| id.to_string())
-            .unwrap_or_default()
-        )),
+        PlayableItem::Track(track) => {
+          if let Some(id) = &track.id {
+            Ok(format!("https://open.spotify.com/track/{}", id.id()))
+          } else {
+            Err(anyhow!("track has no ID"))
+          }
+        }
         PlayableItem::Episode(episode) => Ok(format!(
           "https://open.spotify.com/episode/{}",
-          episode.id.to_owned()
+          episode.id.id()
         )),
       }
     } else {
@@ -96,23 +104,16 @@ impl CliApp {
     }) = &app.current_playback_context
     {
       match item {
-        PlayableItem::Track(track) => Ok(format!(
-          "https://open.spotify.com/album/{}",
-          track
-            .album
-            .id
-            .clone()
-            .map(|id| id.to_string())
-            .unwrap_or_default()
-        )),
+        PlayableItem::Track(track) => {
+          if let Some(id) = &track.album.id {
+            Ok(format!("https://open.spotify.com/album/{}", id.id()))
+          } else {
+            Err(anyhow!("album has no ID"))
+          }
+        }
         PlayableItem::Episode(episode) => Ok(format!(
           "https://open.spotify.com/show/{}",
-          episode
-            .show
-            .id
-            .clone()
-            .map(|id| id.to_string())
-            .unwrap_or_default()
+          episode.show.id.id()
         )),
       }
     } else {
@@ -305,17 +306,17 @@ impl CliApp {
         .await;
       let app = self.net.app.lock().await;
       if let Some(CurrentPlaybackContext {
-        progress_ms: Some(ms),
+        progress: Some(ms),
         item: Some(item),
         ..
       }) = &app.current_playback_context
       {
         let duration = match item {
-          PlayableItem::Track(track) => track.duration.as_millis() as u32,
-          PlayableItem::Episode(episode) => episode.duration.as_millis() as u32,
+          PlayableItem::Track(track) => track.duration.num_milliseconds() as u32,
+          PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u32,
         };
 
-        (*ms as u32, duration)
+        (ms.num_milliseconds() as u32, duration)
       } else {
         return Err(anyhow!("no context available"));
       }
@@ -375,19 +376,24 @@ impl CliApp {
           None => Err(anyhow!("no item playing")),
         }?;
 
+        let id_string = id.id().to_string();
         // Want to like but is already liked -> do nothing
         // Want to like and is not liked yet -> like
-        if s && !self.is_a_saved_track(&id).await {
+        if s && !self.is_a_saved_track(&id_string).await {
           self
             .net
-            .handle_network_event(IoEvent::ToggleSaveTrack(id))
+            .handle_network_event(IoEvent::ToggleSaveTrack(PlayableId::Track(
+              id.into_static(),
+            )))
             .await;
         // Want to dislike but is already disliked -> do nothing
         // Want to dislike and is liked currently -> remove like
-        } else if !s && self.is_a_saved_track(&id).await {
+        } else if !s && self.is_a_saved_track(&id_string).await {
           self
             .net
-            .handle_network_event(IoEvent::ToggleSaveTrack(id))
+            .handle_network_event(IoEvent::ToggleSaveTrack(PlayableId::Track(
+              id.into_static(),
+            )))
             .await;
         }
       }
@@ -436,13 +442,13 @@ impl CliApp {
         let id = track
           .id
           .clone()
-          .map(|track_id| track_id.to_string())
+          .map(|track_id| track_id.id().to_string())
           .unwrap_or_default();
         let mut hs = Format::from_type(FormatType::Track(Box::new(track.clone())));
-        if let Some(ms) = context.progress_ms {
+        if let Some(ms) = &context.progress {
           hs.push(Format::Position((
-            ms,
-            track.duration.as_millis() as u32,
+            ms.num_milliseconds() as u32,
+            track.duration.num_milliseconds() as u32,
           )))
         }
         hs.push(Format::Flags((
@@ -454,10 +460,10 @@ impl CliApp {
       }
       PlayableItem::Episode(episode) => {
         let mut hs = Format::from_type(FormatType::Episode(Box::new(episode.clone())));
-        if let Some(ms) = context.progress_ms {
+        if let Some(ms) = &context.progress {
           hs.push(Format::Position((
-            ms,
-            episode.duration.as_millis() as u32,
+            ms.num_milliseconds() as u32,
+            episode.duration.num_milliseconds() as u32,
           )))
         }
         hs.push(Format::Flags((
@@ -481,21 +487,25 @@ impl CliApp {
     let offset = if random {
       // Only works with playlists for now
       if uri.contains("spotify:playlist:") {
-        let id = uri.split(':').last().unwrap();
-        match self.net.spotify.playlist(id, None, None).await {
-          Ok(p) => {
-            let num = p.tracks.total;
-            Some(thread_rng().gen_range(0..num) as usize)
+        let id_str = uri.split(':').last().unwrap();
+        if let Ok(playlist_id) = rspotify::model::idtypes::PlaylistId::from_id(id_str) {
+          match self.net.spotify.playlist(playlist_id, None, None).await {
+            Ok(p) => {
+              let num = p.tracks.total;
+              Some(thread_rng().gen_range(0..num) as usize)
+            }
+            Err(e) => {
+              self
+                .net
+                .app
+                .lock()
+                .await
+                .handle_error(anyhow!(e.to_string()));
+              return;
+            }
           }
-          Err(e) => {
-            self
-              .net
-              .app
-              .lock()
-              .await
-              .handle_error(anyhow!(e.to_string()));
-            return;
-          }
+        } else {
+          None
         }
       } else {
         None
@@ -505,26 +515,58 @@ impl CliApp {
     };
 
     if uri.contains("spotify:track:") {
-      if queue {
-        self
-          .net
-          .handle_network_event(IoEvent::AddItemToQueue(uri))
-          .await;
-      } else {
-        self
-          .net
-          .handle_network_event(IoEvent::StartPlayback(
-            None,
-            Some(vec![uri.clone()]),
-            Some(0),
-          ))
-          .await;
+      let id_str = uri.split(':').last().unwrap();
+      if let Ok(track_id) = rspotify::model::idtypes::TrackId::from_id(id_str) {
+        let playable_id = PlayableId::Track(track_id.into_static());
+        if queue {
+          self
+            .net
+            .handle_network_event(IoEvent::AddItemToQueue(playable_id))
+            .await;
+        } else {
+          self
+            .net
+            .handle_network_event(IoEvent::StartPlayback(
+              None,
+              Some(vec![playable_id]),
+              Some(0),
+            ))
+            .await;
+        }
       }
     } else {
-      self
-        .net
-        .handle_network_event(IoEvent::StartPlayback(Some(uri.clone()), None, offset))
-        .await;
+      // Context URIs (playlist, album, artist, show)
+      // Parse the URI: spotify:type:id
+      let parts: Vec<&str> = uri.split(':').collect();
+      if parts.len() >= 3 {
+        let id_str = parts[2];
+        let context_id = if uri.contains("spotify:playlist:") {
+          rspotify::model::idtypes::PlaylistId::from_id(id_str)
+            .ok()
+            .map(|id| PlayContextId::Playlist(id.into_static()))
+        } else if uri.contains("spotify:album:") {
+          rspotify::model::idtypes::AlbumId::from_id(id_str)
+            .ok()
+            .map(|id| PlayContextId::Album(id.into_static()))
+        } else if uri.contains("spotify:artist:") {
+          rspotify::model::idtypes::ArtistId::from_id(id_str)
+            .ok()
+            .map(|id| PlayContextId::Artist(id.into_static()))
+        } else if uri.contains("spotify:show:") {
+          rspotify::model::idtypes::ShowId::from_id(id_str)
+            .ok()
+            .map(|id| PlayContextId::Show(id.into_static()))
+        } else {
+          None
+        };
+
+        if let Some(context_id) = context_id {
+          self
+            .net
+            .handle_network_event(IoEvent::StartPlayback(Some(context_id), None, offset))
+            .await;
+        }
+      }
     }
   }
 
@@ -541,7 +583,11 @@ impl CliApp {
       match item {
         Type::Track => {
           if let Some(r) = &results.tracks {
-            r.items[0].uri.clone()
+            if let Some(id) = &r.items[0].id {
+              format!("spotify:track:{}", id.id())
+            } else {
+              return Err(anyhow!("track has no id"));
+            }
           } else {
             return Err(anyhow!("no tracks with name '{}'", name));
           }
@@ -549,10 +595,10 @@ impl CliApp {
         Type::Album => {
           if let Some(r) = &results.albums {
             let album = &r.items[0];
-            if let Some(uri) = &album.uri {
-              uri.clone()
+            if let Some(id) = &album.id {
+              format!("spotify:album:{}", id.id())
             } else {
-              return Err(anyhow!("album {} has no uri", album.name));
+              return Err(anyhow!("album {} has no id", album.name));
             }
           } else {
             return Err(anyhow!("no albums with name '{}'", name));
@@ -560,14 +606,14 @@ impl CliApp {
         }
         Type::Artist => {
           if let Some(r) = &results.artists {
-            r.items[0].uri.clone()
+            format!("spotify:artist:{}", r.items[0].id.id())
           } else {
             return Err(anyhow!("no artists with name '{}'", name));
           }
         }
         Type::Show => {
           if let Some(r) = &results.shows {
-            r.items[0].uri.clone()
+            format!("spotify:show:{}", r.items[0].id.id())
           } else {
             return Err(anyhow!("no shows with name '{}'", name));
           }
@@ -575,8 +621,7 @@ impl CliApp {
         Type::Playlist => {
           if let Some(r) = &results.playlists {
             let p = &r.items[0];
-            // For a random song, create a random offset
-            p.uri.clone()
+            format!("spotify:playlist:{}", p.id.id())
           } else {
             return Err(anyhow!("no playlists with name '{}'", name));
           }
