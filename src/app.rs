@@ -1198,9 +1198,10 @@ impl App {
       match item {
         PlayableItem::Track(track) => {
           if self.get_current_route().id != RouteId::Analysis {
-            let uri = track.uri.clone();
-            self.dispatch(IoEvent::GetAudioAnalysis(uri));
-            self.push_navigation_stack(RouteId::Analysis, ActiveBlock::Analysis);
+            if let Some(track_id) = &track.id {
+              self.dispatch(IoEvent::GetAudioAnalysis(track_id.clone().into_static()));
+              self.push_navigation_stack(RouteId::Analysis, ActiveBlock::Analysis);
+            }
           }
         }
         PlayableItem::Episode(_episode) => {
