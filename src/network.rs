@@ -579,49 +579,51 @@ impl Network {
   }
 
   async fn get_search_results(&mut self, search_term: String, country: Option<Country>) {
+    let market = country.map(Market::Country);
+
     let search_track = self.spotify.search(
       &search_term,
       SearchType::Track,
+      market,
+      None, // include_external
       Some(self.small_search_limit),
       Some(0),
-      country,
-      None,
     );
 
     let search_artist = self.spotify.search(
       &search_term,
       SearchType::Artist,
+      market,
+      None, // include_external
       Some(self.small_search_limit),
       Some(0),
-      country,
-      None,
     );
 
     let search_album = self.spotify.search(
       &search_term,
       SearchType::Album,
+      market,
+      None, // include_external
       Some(self.small_search_limit),
       Some(0),
-      country,
-      None,
     );
 
     let search_playlist = self.spotify.search(
       &search_term,
       SearchType::Playlist,
+      market,
+      None, // include_external
       Some(self.small_search_limit),
       Some(0),
-      country,
-      None,
     );
 
     let search_show = self.spotify.search(
       &search_term,
       SearchType::Show,
+      market,
+      None, // include_external
       Some(self.small_search_limit),
       Some(0),
-      country,
-      None,
     );
 
     // Run the futures concurrently
@@ -644,7 +646,12 @@ impl Network {
         let artist_ids = album_results
           .items
           .iter()
-          .filter_map(|item| item.id.as_ref().map(|id| id.to_string()))
+          .filter_map(|item| {
+            item
+              .id
+              .as_ref()
+              .map(|id| ArtistId::from_id(id.id()).unwrap().into_static())
+          })
           .collect();
 
         // Check if these artists are followed
@@ -653,7 +660,12 @@ impl Network {
         let album_ids = album_results
           .items
           .iter()
-          .filter_map(|album| album.id.as_ref().map(|id| id.to_string()))
+          .filter_map(|album| {
+            album
+              .id
+              .as_ref()
+              .map(|id| AlbumId::from_id(id.id()).unwrap().into_static())
+          })
           .collect();
 
         // Check if these albums are saved
@@ -662,7 +674,7 @@ impl Network {
         let show_ids = show_results
           .items
           .iter()
-          .map(|show| show.id.to_string())
+          .map(|show| show.id.clone().into_static())
           .collect();
 
         // check if these shows are saved
@@ -1330,16 +1342,17 @@ impl Network {
 
   async fn made_for_you_search_and_add(&mut self, search_string: String, country: Option<Country>) {
     const SPOTIFY_ID: &str = "spotify";
+    let market = country.map(Market::Country);
 
     match self
       .spotify
       .search(
         &search_string,
         SearchType::Playlist,
+        market,
+        None, // include_external
         Some(self.large_search_limit),
         Some(0),
-        country,
-        None,
       )
       .await
     {
