@@ -5,7 +5,7 @@ use crate::app::{
 };
 use crate::config::ClientConfig;
 use anyhow::anyhow;
-use futures::StreamExt;
+use chrono::TimeDelta;
 use rspotify::{
   model::{
     album::SimplifiedAlbum,
@@ -18,12 +18,11 @@ use rspotify::{
     search::SearchResult,
     show::SimplifiedShow,
     track::FullTrack,
-    PlayableItem,
+    Market, PlayableItem,
   },
   prelude::*,
   AuthCodeSpotify,
 };
-use serde_json::{map::Map, Value};
 use std::{
   sync::Arc,
   time::{Duration, Instant},
@@ -695,7 +694,7 @@ impl Network {
     &mut self,
     context_id: Option<PlayContextId<'_>>,
     uris: Option<Vec<PlayableId<'_>>>,
-    offset: Option<usize>,
+    _offset: Option<usize>,
   ) {
     let device_id = self.client_config.device_id.as_deref();
 
@@ -727,11 +726,10 @@ impl Network {
 
   async fn seek(&mut self, position_ms: u32) {
     let device_id = self.client_config.device_id.as_deref();
-    match self
-      .spotify
-      .seek_track(Duration::from_millis(position_ms as u64), device_id)
-      .await
-    {
+    // rspotify 0.12 uses chrono::TimeDelta for seek_track
+    let position = TimeDelta::milliseconds(position_ms as i64);
+
+    match self.spotify.seek_track(position, device_id).await {
       Ok(()) => {
         // Wait between seek and status query.
         // Without it, the Spotify API may return the old progress.
@@ -802,7 +800,7 @@ impl Network {
     };
     match self
       .spotify
-      .repeat(&next_repeat_state, self.client_config.device_id.as_deref())
+      .repeat(next_repeat_state, self.client_config.device_id.as_deref())
       .await
     {
       Ok(()) => {
@@ -1368,7 +1366,7 @@ impl Network {
   }
 
   async fn get_audio_analysis(&mut self, track_id: TrackId<'_>) {
-    match self.spotify.audio_analysis(track_id).await {
+    match self.spotify.track_analysis(track_id).await {
       Ok(result) => {
         let mut app = self.app.lock().await;
         app.audio_analysis = Some(result);
