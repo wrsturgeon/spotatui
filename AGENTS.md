@@ -159,7 +159,7 @@
 - ❌ Update `PlaylistItem` field access (fields changed from `track` to different structure)
 - ❌ Review and fix `PlayableItem` enum matching
 - ❌ Update any code accessing changed model fields
-- ⚠️ `src/handlers/album_tracks.rs` still expects `.uri` on albums/tracks; convert to typed IDs/`external_urls` and update queue/save handlers to use `PlayableId`.
+- ⚠️ `src/ui/mod.rs` still treats every playbar item as a `TrackId` (lines 366-377); update the queue/ID renderers to handle `EpisodeId` + typed IDs instead of forcing Strings.
 
 ### Low Priority - Additional Updates
 
@@ -188,7 +188,11 @@
 
 ## Known Issues & Blockers
 
-- **Album track handler drift**: `src/handlers/album_tracks.rs` still relies on `.uri` fields and string IDs; update queue/save flows to typed `PlayableId`/`TrackId` and grab URIs via typed IDs or `external_urls`.
+- **Handler cleanup (in progress)**:
+  - `src/handlers/recently_played.rs` – needs `rspotify::prelude::Id` import so `.id()` works when building recommendation seeds.
+  - `src/handlers/select_device.rs` – still clones `app.devices`, but `DevicePayload` isn’t `Clone` in rspotify 0.12; switch to borrowing/mutating in place.
+  - `src/handlers/mod.rs` – playlist search dispatches string URIs into `GetPlaylistItems` and `app.get_artist`; convert to typed `PlaylistId`/`ArtistId`.
+- **UI queue IDs**: `src/ui/mod.rs` assumes every `PlayableItem` returns a `TrackId`; update the queue rendering + `saved_track_ids_set` lookups so episodes use `EpisodeId`.
 
 ### Design Decisions Needed
 1. Do we store typed IDs (`TrackId`, `AlbumId`, …) inside `App`/UI state, or do we continue storing Strings and convert at the rspotify call sites?
@@ -232,8 +236,8 @@
 ## Next Steps
 
 ### Immediate Actions (to get it compiling)
-1. ❌ Update `src/handlers/album_tracks.rs` (and other handler files) to stop using `.uri`/`String` IDs—convert queue/save flows to typed `PlayableId<'static>` and fetch URIs via typed IDs or `external_urls`.
-2. ❌ Finish the typed-ID conversions in the remaining handlers (`track_table.rs`, `album_tracks.rs`, `artist.rs`, `search_results.rs`, `input.rs`, `podcasts.rs`) so every IoEvent payload carries `TrackId<'static>`/`PlayableId`.
+1. ❌ Finish the handler sweep: patch `recently_played.rs`, `select_device.rs`, `handlers/mod.rs`, and any remaining files so IoEvents take typed IDs and no `.uri` fields remain.
+2. ❌ Fix the UI queue rendering (`src/ui/mod.rs`) to handle `EpisodeId`/`TrackId` correctly rather than forcing Strings.
 3. ❌ Re-test search/podcast flows (CLI + UI) with the new pagination + `Market` arguments; drop the unused `futures` dependency once confirmed no code needs `StreamExt`.
 
 ### Short Term (to get it working)
