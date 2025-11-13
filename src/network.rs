@@ -745,6 +745,24 @@ impl Network {
   ) {
     let device_id = self.client_config.device_id.as_deref();
 
+    // If we're playing a specific track (with offset), temporarily disable shuffle
+    // to ensure the selected track plays first
+    let should_disable_shuffle = offset.is_some() && uris.is_some();
+    let mut original_shuffle_state = false;
+
+    if should_disable_shuffle {
+      // Get current shuffle state
+      if let Ok(Some(playback)) = self.spotify.current_playback(None, None::<Vec<_>>).await {
+        original_shuffle_state = playback.shuffle_state;
+        if original_shuffle_state {
+          // Temporarily disable shuffle
+          let _ = self.spotify.shuffle(false, device_id).await;
+          // Small delay to let the shuffle state update
+          tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+      }
+    }
+
     // Check if we have both context and uris - this means play specific track within context
     let has_both = context_id.is_some() && uris.is_some();
 
@@ -799,11 +817,22 @@ impl Network {
 
     match result {
       Ok(()) => {
+        // Re-enable shuffle if it was on before
+        if should_disable_shuffle && original_shuffle_state {
+          // Small delay to let playback start before re-enabling shuffle
+          tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+          let _ = self.spotify.shuffle(true, device_id).await;
+        }
+
         let mut app = self.app.lock().await;
         app.song_progress_ms = 0;
         app.dispatch(IoEvent::GetCurrentPlayback);
       }
       Err(e) => {
+        // Re-enable shuffle even on error if it was on before
+        if should_disable_shuffle && original_shuffle_state {
+          let _ = self.spotify.shuffle(true, device_id).await;
+        }
         self.handle_error(anyhow!(e)).await;
       }
     }
