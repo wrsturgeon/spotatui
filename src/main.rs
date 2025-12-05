@@ -15,7 +15,8 @@ use anyhow::{anyhow, Result};
 use app::{ActiveBlock, App};
 use backtrace::Backtrace;
 use banner::BANNER;
-use clap::{App as ClapApp, Arg, Shell};
+use clap::{Arg, Command as ClapApp};
+use clap_complete::{generate, Shell};
 use config::ClientConfig;
 use crossterm::{
   cursor::MoveTo,
@@ -138,36 +139,33 @@ async fn main() -> Result<()> {
     .version(env!("CARGO_PKG_VERSION"))
     .author(env!("CARGO_PKG_AUTHORS"))
     .about(env!("CARGO_PKG_DESCRIPTION"))
-    .usage("Press `?` while running the app to see keybindings")
+    .override_usage("Press `?` while running the app to see keybindings")
     .before_help(BANNER)
     .after_help(
       "Your spotify Client ID and Client Secret are stored in $HOME/.config/spotatui/client.yml",
     )
     .arg(
-      Arg::with_name("tick-rate")
-        .short("t")
+      Arg::new("tick-rate")
+        .short('t')
         .long("tick-rate")
         .help("Set the tick rate (milliseconds): the lower the number the higher the FPS.")
         .long_help(
           "Specify the tick rate in milliseconds: the lower the number the \
 higher the FPS. It can be nicer to have a lower value when you want to use the audio analysis view \
 of the app. Beware that this comes at a CPU cost!",
-        )
-        .takes_value(true),
+        ),
     )
     .arg(
-      Arg::with_name("config")
-        .short("c")
+      Arg::new("config")
+        .short('c')
         .long("config")
-        .help("Specify configuration file path.")
-        .takes_value(true),
+        .help("Specify configuration file path."),
     )
     .arg(
-      Arg::with_name("completions")
+      Arg::new("completions")
         .long("completions")
         .help("Generates completions for your preferred shell")
-        .takes_value(true)
-        .possible_values(&["bash", "zsh", "fish", "power-shell", "elvish"])
+        .value_parser(["bash", "zsh", "fish", "power-shell", "elvish"])
         .value_name("SHELL"),
     )
     // Control spotify from the command line
@@ -177,13 +175,14 @@ of the app. Beware that this comes at a CPU cost!",
     .subcommand(cli::search_subcommand())
     // Self-update command
     .subcommand(
-      clap::SubCommand::with_name("update")
+      ClapApp::new("update")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Check for and install updates")
         .arg(
-          Arg::with_name("install")
-            .short("i")
+          Arg::new("install")
+            .short('i')
             .long("install")
+            .action(clap::ArgAction::SetTrue)
             .help("Install the update if available"),
         ),
     );
@@ -191,8 +190,8 @@ of the app. Beware that this comes at a CPU cost!",
   let matches = clap_app.clone().get_matches();
 
   // Shell completions don't need any spotify work
-  if let Some(s) = matches.value_of("completions") {
-    let shell = match s {
+  if let Some(s) = matches.get_one::<String>("completions") {
+    let shell = match s.as_str() {
       "fish" => Shell::Fish,
       "bash" => Shell::Bash,
       "zsh" => Shell::Zsh,
@@ -200,18 +199,18 @@ of the app. Beware that this comes at a CPU cost!",
       "elvish" => Shell::Elvish,
       _ => return Err(anyhow!("no completions avaible for '{}'", s)),
     };
-    clap_app.gen_completions_to("spotatui", shell, &mut io::stdout());
+    generate(shell, &mut clap_app, "spotatui", &mut io::stdout());
     return Ok(());
   }
 
   // Handle self-update command (doesn't need Spotify auth)
   if let Some(update_matches) = matches.subcommand_matches("update") {
-    let do_install = update_matches.is_present("install");
+    let do_install = update_matches.get_flag("install");
     return cli::check_for_update(do_install);
   }
 
   let mut user_config = UserConfig::new();
-  if let Some(config_file_path) = matches.value_of("config") {
+  if let Some(config_file_path) = matches.get_one::<String>("config") {
     let config_file_path = PathBuf::from(config_file_path);
     let path = UserConfigPaths { config_file_path };
     user_config.path_to_config.replace(path);
@@ -219,7 +218,7 @@ of the app. Beware that this comes at a CPU cost!",
   user_config.load_config()?;
 
   if let Some(tick_rate) = matches
-    .value_of("tick-rate")
+    .get_one::<String>("tick-rate")
     .and_then(|tick_rate| tick_rate.parse().ok())
   {
     if tick_rate >= 1000 {
