@@ -1,23 +1,108 @@
 # Changelog
 
-## [0.26.0] - 2025-12-01
+## [0.26.0] - 2025-12-05
 
 ### Changed
 
-- **Forked & Rebranded**: Project is now `spotatui`, maintained by LargeModGames.
-- **Dependency Update**: Migrated from `tui` to `ratatui` (v0.26).
-- **Fixes**: Resolved numerous clippy warnings and deprecated API usage.
+- **Rebranded**: Project renamed from `spotify-tui` to `spotatui`
+- **Config Directory**: Changed config path from `~/.config/spt/` to `~/.config/spotatui/`
+- Construct Spotify config immutably in auth flow
+- Update window title handling
 
 ### Fixed
 
-- Fix confirmation dialog handling on playlist delete [#910](https://github.com/Rigellute/spotify-tui/pull/910)
+- Simplify Option handling and unify key-event flows across handlers
+- Small correctness, arithmetic and parsing improvements in CLI, app, and banner
+- Use typed `id()` keys for HashSet operations and simplify collections
+- Minor rendering and text updates, default ColumnId and ID checks in UI
+
+
+
+## [0.25.1] - 2025-12-01
+
+### Fixed
+
+- Enhance track navigation: load previous tracks when at the start and clamp selected index after loading new tracks
+
+## [0.25.0] - 2025-11-13
+
+### Changed
+
+- **Handlers Migration Complete**: All handlers now use typed IDs (`PlaylistId`, `PlayableId`, `PlayContextId`)
+- Refactor track_table to use typed PlaylistId/PlayContextId and simplify logic
+- Update artist handler to use PlayableId for playback/queue and recommendations
+- Convert album_tracks handler to typed PlayContextId/PlayableId
+
+### Fixed
+
+- Fix input key event pattern matches to account for new `KeyEvent` fields in crossterm
+- Fix shuffle behavior: temporarily disable shuffle when playing a specific track to preserve selection
+- Fix search handling: avoid passing market parameter incorrectly and handle null playlists
+- Fix playback: play selected track directly within context and reorder URIs for correct first-track playback
+- Fix track table: load next page of playlist tracks when navigating past last item
+- Clone market when calling spotify.search to preserve ownership
+- Minor compile-time fixes (app/event/main/redirect/config imports)
 
 ### Added
 
-- Show `album_type` in Search panes [#868](https://github.com/Rigellute/spotify-tui/pull/868)
-- Add option to set window title to "spt - Spotify TUI" on startup [#844](https://github.com/Rigellute/spotify-tui/pull/844)
+- Add manual token cache with load/save helpers for authentication persistence
+- Document deprecated Spotify endpoints and silence deprecation warnings
 
-## [0.25.0] - 2021-08-24
+### Removed
+
+- Remove unused `futures` dependency
+- Remove Debug derive from `IoEvent` in network module
+
+## [0.25.0-beta.2] - 2025-11-12
+
+### Changed
+
+- **Network Layer Migration**: Complete migration to typed IDs for all network API calls
+- Network: adapt search API signature and map search results to typed IDs
+- Network: migrate manual pagination for playlists, albums, saved tracks
+- Network: migrate saved-shows and show/episode endpoints
+- Network: rename follow/unfollow playlist/artist APIs to new method names
+- Network: update recommendations/seed handling and PlayableId mapping
+- Migrate playlist and recently_played handlers to typed IDs
+
+### Fixed
+
+- Fix device volume handling: safely handle optional `volume_percent` field
+- Fix clipboard helpers: use typed IDs and bail gracefully when data is missing
+- Fix user country retrieval with defensive error handling
+- Fix mutable borrow issues for current route handling
+- App: migrate playback progress/duration to rspotify 0.12 Duration fields
+
+### Added
+
+- Add `chrono` dependency for time handling
+- App: use typed TrackId when requesting audio analysis
+- App: convert recommendation seed id handling to typed IDs
+- App: switch follow/unfollow and saved-album flows to typed IDs (into_static)
+
+## [0.25.0-beta.1] - 2025-11-11
+
+### Changed
+
+- **Forked**: Project forked and maintained by LargeModGames
+- **Major Dependency Update**:
+  - Migrated from `tui` to `ratatui` (v0.26) for UI rendering
+  - Upgraded `rspotify` to v0.13 with new authentication API (`AuthCodeSpotify`)
+  - Updated all dependencies to latest compatible versions
+- **Typed ID System**: Begin migration to rspotify's typed ID system (`TrackId`, `PlaylistId`, `PlayableId`, `PlayContextId`)
+- **Duration Handling**: Switch from legacy duration fields to rspotify 0.12+ `Duration` / `TimeDelta` types
+- **UI Frame API**: Update all ratatui draw helpers to use `Frame<'_>` parameter style
+- Migrate Spotify authentication and network layer to new rspotify API (AuthCodeSpotify)
+- App: switch to rspotify idtypes and convert app dispatches to typed IDs
+- CLI: normalize to typed IDs, remove lifetime param, handle optional device IDs and duration conversions
+- Network: adopt rspotify idtypes for IoEvent payloads
+- Handlers/track_table: use typed IDs/PlayableId and context IDs for playback/queue
+
+### Added
+
+- Add futures dependency for network stream handling & device API
+
+## [Upstream 0.25.0] - 2021-08-24
 
 ### Fixed
 
