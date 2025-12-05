@@ -1929,8 +1929,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "spotify-tui"
-version = "0.25.0"
+name = "spotatui"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "arboard",

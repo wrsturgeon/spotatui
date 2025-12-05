@@ -1,6 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [0.26.0] - 2025-12-01
+
+### Changed
+
+- **Forked & Rebranded**: Project is now `spotatui`, maintained by LargeModGames.
+- **Dependency Update**: Migrated from `tui` to `ratatui` (v0.26).
+- **Fixes**: Resolved numerous clippy warnings and deprecated API usage.
+
+### Fixed
 
 - Fix confirmation dialog handling on playlist delete [#910](https://github.com/Rigellute/spotify-tui/pull/910)
 
