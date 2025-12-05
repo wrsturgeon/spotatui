@@ -22,6 +22,11 @@
 - Add comprehensive Copilot instructions documentation (`.github/copilot-instructions.md`)
 - Updated GitHub Actions workflow for automated cross-platform releases
 
+### Security
+
+- Upgrade `clap` from 2.33.3 to 4.5 to remove unmaintained `atty` dependency (GHSA-g98v-hv3f-hcfr)
+- Add `clap_complete` 4.5 for shell completion generation
+
 ## [0.25.1] - 2025-12-01
 
 ### Fixed
