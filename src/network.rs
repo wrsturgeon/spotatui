@@ -90,6 +90,7 @@ pub enum IoEvent {
   GetShow(ShowId<'static>),
   GetCurrentShowEpisodes(ShowId<'static>, Option<u32>),
   AddItemToQueue(PlayableId<'static>),
+  IncrementGlobalSongCount,
 }
 
 #[derive(Clone)]
@@ -274,6 +275,9 @@ impl Network {
       IoEvent::AddItemToQueue(item) => {
         self.add_item_to_queue(item).await;
       }
+      IoEvent::IncrementGlobalSongCount => {
+        self.increment_global_song_count().await;
+      }
     };
 
     let mut app = self.app.lock().await;
@@ -332,6 +336,16 @@ impl Network {
           match item {
             PlayableItem::Track(track) => {
               if let Some(track_id) = track.id {
+                let track_id_str = track_id.id().to_string();
+
+                // Check if this is a new track and telemetry is enabled
+                if app.last_track_id.as_ref() != Some(&track_id_str)
+                  && app.user_config.behavior.enable_global_song_count
+                {
+                  app.dispatch(IoEvent::IncrementGlobalSongCount);
+                }
+
+                app.last_track_id = Some(track_id_str);
                 app.dispatch(IoEvent::CurrentUserSavedTracksContains(vec![
                   track_id.into_static()
                 ]));
@@ -1662,5 +1676,25 @@ impl Network {
         self.handle_error(anyhow!(e)).await;
       }
     }
+  }
+
+  #[cfg(feature = "telemetry")]
+  async fn increment_global_song_count(&self) {
+    const TELEMETRY_ENDPOINT: &str = "https://spotatui-counter.spotatui.workers.dev";
+
+    // Fire-and-forget telemetry request (no PII, anonymous increment)
+    tokio::spawn(async {
+      if let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+      {
+        let _ = client.post(TELEMETRY_ENDPOINT).send().await;
+      }
+    });
+  }
+
+  #[cfg(not(feature = "telemetry"))]
+  async fn increment_global_song_count(&self) {
+    // No-op when telemetry feature is disabled
   }
 }
