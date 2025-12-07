@@ -184,6 +184,17 @@ jobs:
           rm /tmp/spotatui.tar.gz
 
           echo "Updated PKGBUILD to version $VERSION with checksum $CHECKSUM"
+
+          # Verify LTO fix is present
+          if ! grep -q "options=('!lto')" aur/PKGBUILD; then
+            echo "ERROR: options=('!lto') missing from PKGBUILD!"
+            exit 1
+          fi
+          if ! grep -q "RUSTFLAGS.*-Clto=no" aur/PKGBUILD; then
+            echo "ERROR: RUSTFLAGS LTO stripping missing from PKGBUILD!"
+            exit 1
+          fi
+
           cat aur/PKGBUILD
 
       - name: Publish AUR package
