@@ -1,6 +1,6 @@
 use super::analyzer::{create_shared_analyzer, SharedAnalyzer, SpectrumData};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, Device, SampleRate, Stream, StreamConfig};
+use cpal::{BufferSize, Device, Stream, StreamConfig};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 

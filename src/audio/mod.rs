@@ -3,40 +3,49 @@
 // - Linux: PipeWire native (via pipewire-rs)
 // - Windows/macOS: cpal (WASAPI/CoreAudio)
 
-#[cfg(feature = "audio-viz")]
+#[cfg(any(feature = "audio-viz", feature = "audio-viz-cpal"))]
 mod analyzer;
 
 // Platform-specific capture backends
 #[cfg(all(feature = "audio-viz", target_os = "linux"))]
 mod pipewire_capture;
 
-#[cfg(all(feature = "audio-viz-cpal", not(target_os = "linux")))]
+#[cfg(feature = "audio-viz-cpal")]
 mod capture;
 
 // Re-export the appropriate capture manager based on platform
 #[cfg(all(feature = "audio-viz", target_os = "linux"))]
 pub use pipewire_capture::PipeWireCapture as AudioCaptureManager;
 
-#[cfg(all(feature = "audio-viz-cpal", not(target_os = "linux")))]
+#[cfg(feature = "audio-viz-cpal")]
 pub use capture::AudioCaptureManager;
 
 // Re-export SpectrumData
-#[cfg(feature = "audio-viz")]
+#[cfg(any(feature = "audio-viz", feature = "audio-viz-cpal"))]
 #[allow(unused_imports)]
 pub use analyzer::SpectrumData;
 
 // Fallback types when no audio-viz feature is enabled
-#[cfg(not(any(feature = "audio-viz", feature = "audio-viz-cpal")))]
+#[cfg(not(any(
+  all(feature = "audio-viz", target_os = "linux"),
+  feature = "audio-viz-cpal"
+)))]
 #[derive(Clone, Default)]
 pub struct SpectrumData {
   pub bands: [f32; 12],
   pub peak: f32,
 }
 
-#[cfg(not(any(feature = "audio-viz", feature = "audio-viz-cpal")))]
+#[cfg(not(any(
+  all(feature = "audio-viz", target_os = "linux"),
+  feature = "audio-viz-cpal"
+)))]
 pub struct AudioCaptureManager;
 
-#[cfg(not(any(feature = "audio-viz", feature = "audio-viz-cpal")))]
+#[cfg(not(any(
+  all(feature = "audio-viz", target_os = "linux"),
+  feature = "audio-viz-cpal"
+)))]
 impl AudioCaptureManager {
   pub fn new() -> Option<Self> {
     None

@@ -239,7 +239,7 @@ of the app. Beware that this comes at a CPU cost!",
         .config_file_path
         .parent()
         .map(|p| p.join("client.yml"));
-      client_yml_path.map_or(false, |p| p.exists())
+      client_yml_path.is_some_and(|p| p.exists())
     };
 
     if should_prompt {

@@ -41,7 +41,7 @@ realfft = { version = "3.4", optional = true }
 pipewire = { version = "0.8", optional = true }
 
 [features]
-default = ["telemetry", "audio-viz"]
+default = ["telemetry"]
 telemetry = ["reqwest", "reqwest/native-tls"]
 audio-viz = ["realfft", "pipewire"]
 audio-viz-cpal = ["realfft", "cpal"]  # Alternative for Windows/macOS or if pipewire issues
