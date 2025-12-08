@@ -15,7 +15,7 @@
 
 A Spotify client for the terminal written in Rust.
 
-![Demo](https://user-images.githubusercontent.com/12150276/75177190-91d4ab00-572d-11ea-80bd-c5e28c7b17ad.gif)
+![Demo](.github/demo.gif)
 
 The terminal in the demo above is using the [Rigel theme](https://rigel.netlify.com/).
 
@@ -40,11 +40,17 @@ We respect your privacy. This is purely a fun community metric with zero trackin
       - [Linux Requirements](#linux-requirements)
     - [Cargo](#cargo)
     - [Building from Source](#building-from-source)
-  - [Connecting to Spotify's API](#connecting-to-spotifys-api)
+  - [Connecting to Spotify’s API](#connecting-to-spotifys-api)
   - [Usage](#usage)
   - [Native Streaming (Experimental)](#native-streaming-experimental)
+    - [Setup](#setup)
+    - [How It Works](#how-it-works)
+    - [Notes](#notes)
 - [Configuration](#configuration)
-- [In-App Settings](#in-app-settings)
+  - [In-App Settings](#in-app-settings)
+    - [Settings Categories](#settings-categories)
+    - [Theme Presets](#theme-presets)
+    - [Controls](#controls)
   - [Limitations](#limitations)
     - [Deprecated Spotify API Features](#deprecated-spotify-api-features)
   - [Using with spotifyd](#using-with-spotifyd)
