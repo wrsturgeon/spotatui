@@ -37,6 +37,7 @@ We respect your privacy. This is purely a fun community metric with zero trackin
   - [Installation](#installation)
     - [Pre-built Binaries](#pre-built-binaries)
       - [Linux Requirements](#linux-requirements)
+    - [Arch Linux (AUR)](#arch-linux-aur)
     - [Cargo](#cargo)
     - [Building from Source](#building-from-source)
   - [Connecting to Spotify’s API](#connecting-to-spotifys-api)
@@ -86,12 +87,12 @@ You may be asked to re-authenticate with Spotify the first time.
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/LargeModGames/spotatui/releases/latest):
 
-| Platform                           | File                                  |
-| ---------------------------------- | ------------------------------------- |
-| Windows 10/11 (64-bit)             | `spotatui-windows-x86_64.zip`         |
-| Linux (Ubuntu, Arch, Fedora, etc.) | `spotatui-linux-x86_64.tar.gz`        |
-| macOS (Intel)                      | `spotatui-macos-x86_64.tar.gz`        |
-| macOS (Apple Silicon M1/M2/M3)     | `spotatui-macos-aarch64.tar.gz`       |
+| Platform                           | File                            |
+| ---------------------------------- | ------------------------------- |
+| Windows 10/11 (64-bit)             | `spotatui-windows-x86_64.zip`   |
+| Linux (Ubuntu, Arch, Fedora, etc.) | `spotatui-linux-x86_64.tar.gz`  |
+| macOS (Intel)                      | `spotatui-macos-x86_64.tar.gz`  |
+| macOS (Apple Silicon M1/M2/M3)     | `spotatui-macos-aarch64.tar.gz` |
 
 Checksums (`.sha256`) are provided if you want to verify the download.
 
@@ -111,6 +112,16 @@ sudo dnf install pipewire
 ```
 
 > **Note:** Most modern Linux distributions already have PipeWire installed by default.
+
+### Arch Linux (AUR)
+
+For Arch Linux users, spotatui is available in the AUR:
+
+```bash
+yay -S spotatui
+# or
+paru -S spotatui
+```
 
 ### Cargo
 
@@ -315,36 +326,36 @@ Press `Alt-,` to open the **Settings** screen, where you can customize spotatui 
 
 ### Settings Categories
 
-| Category | Description |
-|----------|-------------|
-| **Behavior** | Seek duration, volume increment, tick rate, icons, toggles |
-| **Keybindings** | View current keybindings (customization coming soon) |
-| **Theme** | Color presets and individual color customization |
+| Category        | Description                                                |
+| --------------- | ---------------------------------------------------------- |
+| **Behavior**    | Seek duration, volume increment, tick rate, icons, toggles |
+| **Keybindings** | View current keybindings (customization coming soon)       |
+| **Theme**       | Color presets and individual color customization           |
 
 ### Theme Presets
 
 Choose from 7 built-in theme presets:
 
-| Preset | Description |
-|--------|-------------|
-| Default (Cyan) | Original spotatui theme |
-| Spotify | Official Spotify green (#1DB954) |
-| Dracula | Popular dark purple/pink theme |
-| Nord | Arctic, bluish color palette |
-| Solarized Dark | Classic dark theme |
-| Monokai | Vibrant colors on dark background |
-| Gruvbox | Warm retro groove colors |
+| Preset         | Description                       |
+| -------------- | --------------------------------- |
+| Default (Cyan) | Original spotatui theme           |
+| Spotify        | Official Spotify green (#1DB954)  |
+| Dracula        | Popular dark purple/pink theme    |
+| Nord           | Arctic, bluish color palette      |
+| Solarized Dark | Classic dark theme                |
+| Monokai        | Vibrant colors on dark background |
+| Gruvbox        | Warm retro groove colors          |
 
 ### Controls
 
-| Key | Action |
-|-----|--------|
-| `Alt-,` | Open Settings |
-| `←` / `→` | Switch category tabs |
-| `↑` / `↓` | Navigate settings |
-| `Enter` | Toggle boolean / Cycle preset / Edit value |
-| `Alt-S` | Save changes |
-| `Esc` | Exit Settings |
+| Key       | Action                                     |
+| --------- | ------------------------------------------ |
+| `Alt-,`   | Open Settings                              |
+| `←` / `→` | Switch category tabs                       |
+| `↑` / `↓` | Navigate settings                          |
+| `Enter`   | Toggle boolean / Cycle preset / Edit value |
+| `Alt-S`   | Save changes                               |
+| `Esc`     | Exit Settings                              |
 
 Changes are applied **immediately** when saved - no restart required!
 
@@ -365,11 +376,11 @@ If you want to play tracks, Spotify requires that you have a Premium account.
 - **Audio Visualization** (press `v`): Now uses **local real-time FFT analysis** of your system audio. The visualization no longer depends on Spotify's deprecated Audio Analysis API.
 
   **Platform Support:**
-  | Platform | Status | Notes |
-  |----------|--------|-------|
-  | **Windows** | ✅ Works out of the box | Uses WASAPI loopback |
-  | **Linux** | ✅ Works out of the box | Uses PipeWire/PulseAudio monitor devices |
-  | **macOS** | ⚠️ Requires setup | Needs a virtual audio device (see below) |
+  | Platform    | Status                 | Notes                                    |
+  | ----------- | ---------------------- | ---------------------------------------- |
+  | **Windows** | ✅ Works out of the box | Uses WASAPI loopback                     |
+  | **Linux**   | ✅ Works out of the box | Uses PipeWire/PulseAudio monitor devices |
+  | **macOS**   | ⚠️ Requires setup       | Needs a virtual audio device (see below) |
 
   > **macOS Users:** macOS doesn't natively expose system audio loopback. To use audio visualization, install a virtual audio device like [BlackHole](https://github.com/ExistentialAudio/BlackHole) (free) or [Loopback](https://rogueamoeba.com/loopback/) (paid). Configure it to capture system audio and set it as your default input device.
 
