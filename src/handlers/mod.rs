@@ -20,6 +20,7 @@ mod podcasts;
 mod recently_played;
 mod search_results;
 mod select_device;
+mod settings;
 mod track_table;
 mod update_prompt;
 
@@ -97,6 +98,11 @@ pub fn handle_app(key: Key, app: &mut App) {
     _ if key == app.user_config.keys.basic_view => {
       app.push_navigation_stack(RouteId::BasicView, ActiveBlock::BasicView);
     }
+    // Open settings with Alt-,
+    Key::Alt(',') => {
+      app.load_settings_for_category();
+      app.push_navigation_stack(RouteId::Settings, ActiveBlock::Settings);
+    }
     _ => handle_block_events(key, app),
   }
 }
@@ -173,6 +179,9 @@ fn handle_block_events(key: Key, app: &mut App) {
     }
     ActiveBlock::UpdatePrompt => {
       update_prompt::handler(key, app);
+    }
+    ActiveBlock::Settings => {
+      settings::handler(key, app);
     }
   }
 }
