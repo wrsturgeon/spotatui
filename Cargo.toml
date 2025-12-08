@@ -6,7 +6,7 @@ documentation = "https://github.com/LargeModGames/spotatui"
 repository = "https://github.com/LargeModGames/spotatui"
 keywords = ["spotify", "tui", "cli", "terminal"]
 categories = ["command-line-utilities"]
-version = "0.33.2"
+version = "0.33.5"
 authors = ["LargeModGames <LargeModGames@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -41,6 +41,7 @@ realfft = { version = "3.4", optional = true }
 librespot-core = { version = "0.8", optional = true }
 librespot-connect = { version = "0.8", optional = true }
 librespot-oauth = { version = "0.8", optional = true }
+librespot-metadata = { version = "0.8", optional = true }
 
 [target.'cfg(all(target_os = "linux", not(target_env = "musl")))'.dependencies]
 pipewire = { version = "0.9", optional = true }
@@ -55,7 +56,7 @@ librespot-playback = { version = "0.8", optional = true, default-features = fals
 [features]
 default = ["telemetry", "streaming", "audio-viz-cpal"]
 telemetry = ["reqwest", "reqwest/native-tls"]
-streaming = ["librespot-core", "librespot-playback", "librespot-connect", "librespot-oauth"]
+streaming = ["librespot-core", "librespot-playback", "librespot-connect", "librespot-oauth", "librespot-metadata"]
 audio-viz = ["realfft", "pipewire"]
 audio-viz-cpal = ["realfft", "cpal"]  # Alternative for Windows/macOS or if pipewire issues
 

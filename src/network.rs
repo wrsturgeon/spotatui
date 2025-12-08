@@ -440,6 +440,8 @@ impl Network {
         }
 
         app.current_playback_context = Some(c);
+        // Clear native track info since we now have full API data
+        app.native_track_info = None;
       }
       Ok(None) => {
         app.instant_since_last_current_playback_poll = Instant::now();
@@ -949,10 +951,13 @@ impl Network {
           let _ = self.spotify.shuffle(true, device_id).await;
         }
 
-        // Reset progress immediately
+        // Reset progress and update playing state immediately
         {
           let mut app = self.app.lock().await;
           app.song_progress_ms = 0;
+          if let Some(ctx) = &mut app.current_playback_context {
+            ctx.is_playing = true;
+          }
         }
 
         // Wait for Spotify's API to sync before fetching updated state
@@ -1000,6 +1005,20 @@ impl Network {
   }
 
   async fn next_track(&mut self) {
+    // Use native streaming player for instant skip (no network delay)
+    #[cfg(feature = "streaming")]
+    if self.is_native_streaming_active() {
+      if let Some(ref player) = self.streaming_player {
+        player.next();
+        // Reset progress immediately for UI feedback
+        let mut app = self.app.lock().await;
+        app.song_progress_ms = 0;
+        // The TrackChanged event will trigger GetCurrentPlayback for full metadata
+        return;
+      }
+    }
+
+    // Fallback to API-based skip
     match self
       .spotify
       .next_track(self.client_config.device_id.as_deref())
@@ -1016,6 +1035,20 @@ impl Network {
   }
 
   async fn previous_track(&mut self) {
+    // Use native streaming player for instant skip (no network delay)
+    #[cfg(feature = "streaming")]
+    if self.is_native_streaming_active() {
+      if let Some(ref player) = self.streaming_player {
+        player.prev();
+        // Reset progress immediately for UI feedback
+        let mut app = self.app.lock().await;
+        app.song_progress_ms = 0;
+        // The TrackChanged event will trigger GetCurrentPlayback for full metadata
+        return;
+      }
+    }
+
+    // Fallback to API-based skip
     match self
       .spotify
       .previous_track(self.client_config.device_id.as_deref())

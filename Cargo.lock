@@ -3674,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "spotatui"
-version = "0.33.2"
+version = "0.33.5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3687,6 +3687,7 @@ dependencies = [
  "dirs",
  "librespot-connect",
  "librespot-core",
+ "librespot-metadata",
  "librespot-oauth",
  "librespot-playback",
  "open",

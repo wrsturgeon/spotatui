@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.33.5] - 2025-12-09
+
+### Fixed
+
+- **Program Hanging on Exit**: Fixed issue where pressing "q" to exit the TUI would close the interface but leave the program running in the background
+  - Root cause: Network thread continued running because the IO channel sender was never dropped, keeping the channel open indefinitely
+  - Fix: Added `close_io_channel()` method that explicitly drops the sender when exiting, allowing the network thread to terminate gracefully
+  - Result: Program now exits cleanly without requiring an additional Ctrl+C
+
+- **Butter-Smooth Playbar Updates**: Completely rewrote playbar progress calculation for silky-smooth updates
+  - **Previously**: Progress jumped every 5 seconds when the Spotify API was polled, causing visible stuttering
+  - **Now**: Smooth incremental updates every tick (16ms by default, configurable via `tick_rate_milliseconds`)
+  - **How it works**:
+    - On each tick, progress increments by the tick rate when playing
+    - Resyncs with Spotify API every 5 seconds to prevent drift
+    - Responds to API updates within 300ms for instant feedback on play/pause/seek
+  - **Result**: Progress bar now flows smoothly like a native music player, not in 5-second jumps
+  - Optimized code paths to reduce CPU usage and unnecessary calculations
+
+- **First Song Pause Bug**: Fixed issue where pausing the first song after startup required pressing pause twice
+  - Root cause: `is_playing` state wasn't immediately updated to `true` when starting playback, staying `false` until API poll completed
+  - Fix: Now immediately sets `is_playing = true` when `StartPlayback` succeeds, matching the behavior of resume playback
+  - Result: Pause button works correctly on first press, even immediately after selecting a song
+
+## [0.33.4] - 2025-12-08
+
+### Fixed
+
+- **Instant Track Skip with Native Streaming**: When using native streaming, skipping tracks (n/p keys) now updates the playbar instantly
+  - Previously, the UI waited for the Spotify API response before updating, causing a noticeable delay where you'd hear the new song while the playbar still showed the old song
+  - Now uses the native player's `next()`/`prev()` methods via the Spirc controller for immediate skip
+  - Added `NativeTrackInfo` - extracts track name, artists, and duration from librespot's `TrackChanged` event for instant playbar display
+  - The playbar now shows native player info immediately, then seamlessly transitions to full API data when it arrives
+
+- **Real-Time Playbar Progress**: The progress bar now updates every second instead of every 5 seconds when using native streaming
+  - Enabled `position_update_interval` in librespot's PlayerConfig to receive periodic `PositionChanged` events
+  - Added `is_streaming_active` flag to disable API-based progress calculation when native streaming is active
+  - Progress bar time now shows accurate, real-time playback position (0:01, 0:02, 0:03...) instead of jumping in 5-second increments
+
 ## [0.33.3] - 2025-12-08
 
 ### Fixed

@@ -1070,19 +1070,35 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         ),
       };
 
-      let track_name = if app.liked_song_ids_set.contains(&item_id) {
-        format!("{}{}", &app.user_config.padded_liked_icon(), name)
-      } else {
-        name
-      };
+      // Use native track info for instant display when available (e.g., after skipping tracks)
+      // Falls back to API data when native info is not available
+      let (display_name, display_artists, display_duration_ms) =
+        if let Some(ref native_info) = app.native_track_info {
+          (
+            native_info.name.clone(),
+            native_info.artists.join(", "),
+            native_info.duration_ms as u64,
+          )
+        } else {
+          let artists_str = match track_item {
+            PlayableItem::Track(track) => create_artist_string(&track.artists),
+            PlayableItem::Episode(episode) => format!("{} - {}", episode.name, episode.show.name),
+          };
+          (
+            name.clone(),
+            artists_str,
+            duration.num_milliseconds() as u64,
+          )
+        };
 
-      let play_bar_text = match track_item {
-        PlayableItem::Track(track) => create_artist_string(&track.artists),
-        PlayableItem::Episode(episode) => format!("{} - {}", episode.name, episode.show.name),
+      let track_name = if app.liked_song_ids_set.contains(&item_id) {
+        format!("{}{}", &app.user_config.padded_liked_icon(), display_name)
+      } else {
+        display_name
       };
 
       let lines = Text::from(Span::styled(
-        play_bar_text,
+        display_artists,
         Style::default().fg(app.user_config.theme.playbar_text),
       ));
 
@@ -1103,7 +1119,7 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         None => app.song_progress_ms,
       };
 
-      let duration_std = std::time::Duration::from_millis(duration.num_milliseconds() as u64);
+      let duration_std = std::time::Duration::from_millis(display_duration_ms);
       let perc = get_track_progress_percentage(progress_ms, duration_std);
 
       let song_progress_label = display_track_progress(progress_ms, duration_std);

@@ -169,6 +169,8 @@ impl StreamingPlayer {
         160 => librespot_playback::config::Bitrate::Bitrate160,
         _ => librespot_playback::config::Bitrate::Bitrate320,
       },
+      // Enable periodic position updates for real-time playbar progress
+      position_update_interval: Some(std::time::Duration::from_secs(1)),
       ..Default::default()
     };
 
@@ -280,6 +282,16 @@ impl StreamingPlayer {
   /// Stop playback
   pub fn stop(&self) {
     self.player.stop();
+  }
+
+  /// Skip to the next track
+  pub fn next(&self) {
+    let _ = self.spirc.next();
+  }
+
+  /// Skip to the previous track  
+  pub fn prev(&self) {
+    let _ = self.spirc.prev();
   }
 
   /// Seek to a position in the current track (in milliseconds)

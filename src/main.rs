@@ -48,7 +48,10 @@ use std::{
   io::{self, stdout},
   panic::{self, PanicHookInfo},
   path::PathBuf,
-  sync::Arc,
+  sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+  },
   time::SystemTime,
 };
 use tokio::sync::Mutex;
@@ -470,6 +473,8 @@ of the app. Beware that this comes at a CPU cost!",
     #[cfg(feature = "streaming")]
     if streaming_player.is_some() {
       println!("Native playback enabled - 'spotatui' is now your active playback device");
+      // Mark streaming as active so progress updates come from native player, not API
+      app.lock().await.is_streaming_active = true;
     }
 
     // Clone streaming player and device name for use in network spawn
@@ -480,13 +485,23 @@ of the app. Beware that this comes at a CPU cost!",
       .as_ref()
       .map(|p| p.device_name().to_string());
 
+    // Create shared atomic for real-time position updates from native player
+    // This avoids lock contention - the player event handler can update position
+    // without needing to acquire the app mutex
+    #[cfg(feature = "streaming")]
+    let shared_position = Arc::new(AtomicU64::new(0));
+    #[cfg(feature = "streaming")]
+    let shared_position_for_events = Arc::clone(&shared_position);
+    #[cfg(feature = "streaming")]
+    let shared_position_for_ui = Arc::clone(&shared_position);
+
     // Spawn player event listener (updates app state from native player events)
     #[cfg(feature = "streaming")]
     if let Some(ref player) = streaming_player {
       let event_rx = player.get_event_channel();
       let app_for_events = Arc::clone(&app);
       tokio::spawn(async move {
-        handle_player_events(event_rx, app_for_events).await;
+        handle_player_events(event_rx, app_for_events, shared_position_for_events).await;
       });
     }
 
@@ -508,7 +523,10 @@ of the app. Beware that this comes at a CPU cost!",
       start_tokio(sync_io_rx, &mut network).await;
     });
     // The UI must run in the "main" thread
-    start_ui(user_config, &cloned_app).await?;
+    #[cfg(feature = "streaming")]
+    start_ui(user_config, &cloned_app, Some(shared_position_for_ui)).await?;
+    #[cfg(not(feature = "streaming"))]
+    start_ui(user_config, &cloned_app, None).await?;
   }
 
   Ok(())
@@ -526,6 +544,7 @@ async fn start_tokio(io_rx: std::sync::mpsc::Receiver<IoEvent>, network: &mut Ne
 async fn handle_player_events(
   mut event_rx: librespot_playback::player::PlayerEventChannel,
   app: Arc<Mutex<App>>,
+  shared_position: Arc<AtomicU64>,
 ) {
   use chrono::TimeDelta;
   use player::PlayerEvent;
@@ -591,10 +610,40 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::TrackChanged { audio_item } => {
-        // Track metadata changed - update UI
+        // Track metadata changed - extract immediate info for instant UI updates
         if let Ok(mut app) = app.try_lock() {
+          use librespot_metadata::audio::UniqueFields;
+
+          // Extract artist names and album from UniqueFields
+          let (artists, album) = match &audio_item.unique_fields {
+            UniqueFields::Track { artists, album, .. } => {
+              // Extract artist names from ArtistsWithRole
+              let artist_names: Vec<String> = artists.0.iter().map(|a| a.name.clone()).collect();
+              (artist_names, album.clone())
+            }
+            UniqueFields::Episode { show_name, .. } => (vec![show_name.clone()], String::new()),
+            UniqueFields::Local { artists, album, .. } => {
+              let artist_vec = artists
+                .as_ref()
+                .map(|a| vec![a.clone()])
+                .unwrap_or_default();
+              let album_str = album.clone().unwrap_or_default();
+              (artist_vec, album_str)
+            }
+          };
+
+          // Store immediate track info for instant UI display
+          app.native_track_info = Some(app::NativeTrackInfo {
+            name: audio_item.name.clone(),
+            artists,
+            album,
+            duration_ms: audio_item.duration_ms,
+          });
+
           app.song_progress_ms = 0;
           app.last_track_id = Some(audio_item.track_id.to_string());
+          // Reset the poll timer so we don't immediately overwrite with stale API data
+          app.instant_since_last_current_playback_poll = std::time::Instant::now();
           app.dispatch(IoEvent::GetCurrentPlayback);
         }
       }
@@ -626,6 +675,15 @@ async fn handle_player_events(
           }
         }
       }
+      PlayerEvent::PositionChanged {
+        play_request_id: _,
+        track_id: _,
+        position_ms,
+      } => {
+        // Use atomic store for lock-free position updates
+        // This never blocks or fails, ensuring every position update is captured
+        shared_position.store(position_ms as u64, Ordering::Relaxed);
+      }
       _ => {
         // Ignore other events
       }
@@ -633,7 +691,11 @@ async fn handle_player_events(
   }
 }
 
-async fn start_ui(user_config: UserConfig, app: &Arc<Mutex<App>>) -> Result<()> {
+async fn start_ui(
+  user_config: UserConfig,
+  app: &Arc<Mutex<App>>,
+  shared_position: Option<Arc<AtomicU64>>,
+) -> Result<()> {
   // Terminal initialization
   let mut stdout = stdout();
   execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -760,6 +822,7 @@ async fn start_ui(user_config: UserConfig, app: &Arc<Mutex<App>>) -> Result<()> 
     match events.next()? {
       event::Event::Input(key) => {
         if key == Key::Ctrl('c') {
+          app.close_io_channel();
           break;
         }
 
@@ -779,6 +842,7 @@ async fn start_ui(user_config: UserConfig, app: &Arc<Mutex<App>>) -> Result<()> 
               None => None,
             };
             if pop_result.is_none() {
+              app.close_io_channel();
               break; // Exit application
             }
           }
@@ -788,6 +852,17 @@ async fn start_ui(user_config: UserConfig, app: &Arc<Mutex<App>>) -> Result<()> 
       }
       event::Event::Tick => {
         app.update_on_tick();
+
+        // Read position from shared atomic if native streaming is active
+        // This provides lock-free real-time updates from player events
+        if let Some(ref pos) = shared_position {
+          if app.is_streaming_active {
+            let position_ms = pos.load(Ordering::Relaxed);
+            if position_ms > 0 {
+              app.song_progress_ms = position_ms as u128;
+            }
+          }
+        }
 
         // Lazy audio capture: only capture when in Analysis view
         #[cfg(any(feature = "audio-viz", feature = "audio-viz-cpal"))]

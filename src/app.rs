@@ -277,6 +277,17 @@ pub enum LyricsStatus {
   NotFound,
 }
 
+/// Immediate track info from native player for instant UI updates
+/// Used to display track info immediately when skipping, before API responds
+#[derive(Clone, Debug, Default)]
+pub struct NativeTrackInfo {
+  pub name: String,
+  pub artists: Vec<String>,
+  #[allow(dead_code)]
+  pub album: String, // Reserved for future use (e.g., displaying album in playbar)
+  pub duration_ms: u32,
+}
+
 /// Settings screen category tabs
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub enum SettingsCategory {
@@ -437,6 +448,10 @@ pub struct App {
   pub settings_selected_index: usize,
   pub settings_edit_mode: bool,
   pub settings_edit_buffer: String,
+  /// Immediate track info from native player for instant UI updates
+  pub native_track_info: Option<NativeTrackInfo>,
+  /// Whether native streaming is active (disables API-based progress calculation)
+  pub is_streaming_active: bool,
 }
 
 impl Default for App {
@@ -536,6 +551,8 @@ impl Default for App {
       settings_selected_index: 0,
       settings_edit_mode: false,
       settings_edit_buffer: String::new(),
+      native_track_info: None,
+      is_streaming_active: false,
     }
   }
 }
@@ -565,6 +582,11 @@ impl App {
         // TODO: handle error
       };
     }
+  }
+
+  // Close the IO channel to allow the network thread to exit gracefully
+  pub fn close_io_channel(&mut self) {
+    self.io_tx = None;
   }
 
   fn apply_seek(&mut self, seek_ms: u32) {
@@ -608,6 +630,7 @@ impl App {
 
   pub fn update_on_tick(&mut self) {
     self.poll_current_playback();
+
     if let Some(CurrentPlaybackContext {
       item: Some(item),
       progress,
@@ -615,32 +638,41 @@ impl App {
       ..
     }) = &self.current_playback_context
     {
-      // Update progress even when the song is not playing,
-      // because seeking is possible while paused
-      let current_progress_ms = progress
-        .as_ref()
-        .map(|p| p.num_milliseconds() as u128)
-        .unwrap_or(0);
-
-      let elapsed = if *is_playing {
-        self
+      // When native streaming is active, skip API-based progress calculation
+      // The native player's PositionChanged events update song_progress_ms directly
+      if self.is_streaming_active {
+        let ms_since_poll = self
           .instant_since_last_current_playback_poll
           .elapsed()
-          .as_millis()
-      } else {
-        0u128
-      } + current_progress_ms;
-
-      let duration_ms = match item {
-        PlayableItem::Track(track) => track.duration.num_milliseconds() as u128,
-        PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u128,
-      };
-
-      if elapsed < duration_ms {
-        self.song_progress_ms = elapsed;
-      } else {
-        self.song_progress_ms = duration_ms;
+          .as_millis();
+        if ms_since_poll < 2000 {
+          return; // Recent native update - don't overwrite
+        }
+        // No recent native update - fall through to API-based calculation as fallback
       }
+
+      let ms_since_poll = self
+        .instant_since_last_current_playback_poll
+        .elapsed()
+        .as_millis();
+
+      // Resync from fresh API data (within 300ms of poll) to correct drift
+      if ms_since_poll < 300 {
+        self.song_progress_ms = progress
+          .as_ref()
+          .map(|p| p.num_milliseconds() as u128)
+          .unwrap_or(0);
+      } else if *is_playing {
+        // Smooth incremental updates between API polls
+        let tick_rate_ms = self.user_config.behavior.tick_rate_milliseconds as u128;
+        let duration_ms = match item {
+          PlayableItem::Track(track) => track.duration.num_milliseconds() as u128,
+          PlayableItem::Episode(episode) => episode.duration.num_milliseconds() as u128,
+        };
+
+        self.song_progress_ms = (self.song_progress_ms + tick_rate_ms).min(duration_ms);
+      }
+      // When paused, keep song_progress_ms unchanged
     }
   }
 
