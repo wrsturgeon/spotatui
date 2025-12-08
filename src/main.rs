@@ -249,7 +249,7 @@ of the app. Beware that this comes at a CPU cost!",
       println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
       println!("📊 Global Song Counter");
       println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      println!("\nSpotatui can contribute to a global counter showing total");
+      println!("\nspotatui can contribute to a global counter showing total");
       println!("songs played by all users worldwide.");
       println!("\n🔒 Privacy: This feature is completely anonymous.");
       println!("   • No personal information is collected");
@@ -452,7 +452,7 @@ of the app. Beware that this comes at a CPU cost!",
       {
         Ok(p) => {
           println!("Streaming player initialized as '{}'", p.device_name());
-          // Auto-activate Spotatui as the playback device so users don't need to manually select it
+          // Auto-activate spotatui as the playback device so users don't need to manually select it
           p.activate();
           println!("Activated '{}' as playback device", p.device_name());
           Some(Arc::new(p))
@@ -469,7 +469,7 @@ of the app. Beware that this comes at a CPU cost!",
 
     #[cfg(feature = "streaming")]
     if streaming_player.is_some() {
-      println!("Native playback enabled - 'Spotatui' is now your active playback device");
+      println!("Native playback enabled - 'spotatui' is now your active playback device");
     }
 
     // Clone streaming player and device name for use in network spawn
@@ -649,7 +649,7 @@ async fn start_ui(user_config: UserConfig, app: &Arc<Mutex<App>>) -> Result<()> 
   let mut backend = CrosstermBackend::new(stdout);
 
   if user_config.behavior.set_window_title {
-    backend.execute(SetTitle("spt - Spotatui"))?;
+    backend.execute(SetTitle("spt - spotatui"))?;
   }
 
   let mut terminal = Terminal::new(backend)?;

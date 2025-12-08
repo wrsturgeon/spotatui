@@ -1838,7 +1838,7 @@ impl Network {
     };
   }
 
-  /// Auto-select a streaming device by name (used for native Spotatui streaming)
+  /// Auto-select a streaming device by name (used for native spotatui streaming)
   /// This will retry a few times since the device may take a moment to appear in Spotify's device list
   async fn auto_select_streaming_device(&mut self, device_name: String) {
     // Retry a few times since the device may not appear immediately

@@ -58,7 +58,7 @@ pub struct StreamingConfig {
 impl Default for StreamingConfig {
   fn default() -> Self {
     Self {
-      device_name: "Spotatui".to_string(),
+      device_name: "spotatui".to_string(),
       bitrate: 320,
       audio_cache: false,
       cache_path: None,

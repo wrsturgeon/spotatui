@@ -4,7 +4,7 @@
 
 ### Added
 
-- **In-App Settings Screen**: Press `Alt-,` to open a new settings UI for customizing Spotatui without editing config files
+- **In-App Settings Screen**: Press `Alt-,` to open a new settings UI for customizing spotatui without editing config files
   - **Behavior Settings**: Adjust seek duration, volume increment, tick rate, icons, and toggle options
   - **Keybindings**: View current keybindings (editing coming in future release)
   - **Theme Presets**: Choose from 7 built-in themes with instant preview
@@ -38,8 +38,8 @@
 
 ### Added
 
-- **Native Spotify Streaming (Experimental)**: Spotatui can now play audio directly! No more need for spotifyd or an external Spotify client
-  - "Spotatui" appears as a Spotify Connect device in your device list
+- **Native Spotify Streaming (Experimental)**: spotatui can now play audio directly! No more need for spotifyd or an external Spotify client
+  - "spotatui" appears as a Spotify Connect device in your device list
   - Control playback from the TUI, phone, or any other Spotify client
   - Powered by [librespot](https://github.com/librespot-org/librespot) for native audio
   - New `streaming` feature flag (enabled by default)

@@ -1,4 +1,4 @@
-# Spotatui
+# spotatui
 
 > A Spotify client for the terminal written in Rust, powered by [Ratatui](https://github.com/ratatui-org/ratatui).
 >
@@ -7,7 +7,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/spotatui.svg)](https://crates.io/crates/spotatui)
 [![Upstream](https://img.shields.io/badge/upstream-Rigellute%2Fspotify--tui-blue)](https://github.com/Rigellute/spotify-tui)
-[![Songs played using Spotatui](https://img.shields.io/badge/dynamic/json?url=https://spotatui-counter.spotatui.workers.dev&query=count&label=Songs%20played%20using%20Spotatui&labelColor=0b0f14&color=1ed760&logo=spotify&logoColor=1ed760&style=flat-square&cacheSeconds=600)](https://github.com/LargeModGames/spotatui)
+[![Songs played using Spotatui](https://img.shields.io/badge/dynamic/json?url=https://spotatui-counter.spotatui.workers.dev&query=count&label=Songs%20played%20using%20spotatui&labelColor=0b0f14&color=1ed760&logo=spotify&logoColor=1ed760&style=flat-square&cacheSeconds=600)](https://github.com/LargeModGames/spotatui)
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-95-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -21,7 +21,7 @@ The terminal in the demo above is using the [Rigel theme](https://rigel.netlify.
 
 ## Privacy Notice
 
-**🔒 Anonymous Global Counter**: Spotatui includes an opt-in feature that contributes to a global counter showing how many songs have been played by all users worldwide. This feature:
+**🔒 Anonymous Global Counter**: spotatui includes an opt-in feature that contributes to a global counter showing how many songs have been played by all users worldwide. This feature:
 
 - **Is completely anonymous** - no personal information, song names, artists, or listening history is collected
 - **Only sends a simple increment** when a new song starts playing
@@ -32,7 +32,7 @@ We respect your privacy. This is purely a fun community metric with zero trackin
 
 ---
 
-- [Spotatui](#spotatui)
+- [spotatui](#spotatui)
   - [Privacy Notice](#privacy-notice)
   - [Migrating from spotify-tui](#migrating-from-spotify-tui)
   - [Installation](#installation)
@@ -166,7 +166,7 @@ But here they are again:
 1. You will be redirected to an official Spotify webpage to ask you for permissions.
 1. After accepting the permissions, you'll be redirected to localhost. If all goes well, the redirect URL will be parsed automatically and now you're done. If the local webserver fails for some reason you'll be redirected to a blank webpage that might say something like "Connection Refused" since no server is running. Regardless, copy the URL and paste into the prompt in the terminal.
 
-And now you are ready to use `Spotatui` 🎉
+And now you are ready to use `spotatui` 🎉
 
 You can edit the config at anytime at `${HOME}/.config/spotatui/client.yml`.
 
@@ -195,7 +195,7 @@ spotatui search "An even cooler song" --tracks --format "%t from %b" --limit 30
 
 ## Native Streaming (Experimental)
 
-Spotatui now includes **native Spotify Connect** support, allowing it to play audio directly on your computer without needing an external player like spotifyd.
+spotatui now includes **native Spotify Connect** support, allowing it to play audio directly on your computer without needing an external player like spotifyd.
 
 ### Setup
 
@@ -203,12 +203,12 @@ The native streaming feature uses a separate authentication flow. On first run:
 
 1. Your browser will open to Spotify's authorization page
 2. **Important:** The redirect URI will be `http://127.0.0.1:8989/login` - this is different from the main app's callback URL
-3. After authorizing, "Spotatui" will appear in your Spotify Connect device list
+3. After authorizing, "spotatui" will appear in your Spotify Connect device list
 4. Credentials are cached so you only need to do this once
 
 ### How It Works
 
-- When streaming is enabled, "Spotatui" registers as a Spotify Connect device
+- When streaming is enabled, "spotatui" registers as a Spotify Connect device
 - You can control playback from the TUI, your phone, or any other Spotify client
 - Audio plays directly on the computer running spotatui
 
@@ -306,7 +306,7 @@ keybindings:
 
 ## In-App Settings
 
-Press `Alt-,` to open the **Settings** screen, where you can customize Spotatui without editing config files manually.
+Press `Alt-,` to open the **Settings** screen, where you can customize spotatui without editing config files manually.
 
 ### Settings Categories
 
@@ -322,7 +322,7 @@ Choose from 7 built-in theme presets:
 
 | Preset | Description |
 |--------|-------------|
-| Default (Cyan) | Original Spotatui theme |
+| Default (Cyan) | Original spotatui theme |
 | Spotify | Official Spotify green (#1DB954) |
 | Dracula | Popular dark purple/pink theme |
 | Nord | Arctic, bluish color palette |
@@ -347,7 +347,7 @@ Changes are applied **immediately** when saved - no restart required!
 
 This app uses the [Web API](https://developer.spotify.com/documentation/web-api/) from Spotify, which doesn't handle streaming itself. You have three options for audio playback:
 
-1. **Native Streaming (NEW!)** - Spotatui can now play audio directly using its built-in streaming feature. See [Native Streaming](#native-streaming-experimental) below.
+1. **Native Streaming (NEW!)** - spotatui can now play audio directly using its built-in streaming feature. See [Native Streaming](#native-streaming-experimental) below.
 2. **Official Spotify Client** - Have the official Spotify app open on your computer
 3. **Spotifyd** - Use a lightweight alternative like [spotifyd](https://github.com/Spotifyd/spotifyd)
 

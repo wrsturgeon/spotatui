@@ -36,7 +36,7 @@ fn default_streaming_enabled() -> bool {
 }
 
 fn default_device_name() -> String {
-  "Spotatui".to_string()
+  "spotatui".to_string()
 }
 
 fn default_bitrate() -> u16 {
