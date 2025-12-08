@@ -140,6 +140,7 @@ pub enum ActiveBlock {
   BasicView,
   Dialog(DialogContext),
   UpdatePrompt,
+  Settings,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -162,6 +163,7 @@ pub enum RouteId {
   Recommendations,
   Dialog,
   UpdatePrompt,
+  Settings,
 }
 
 #[derive(Debug)]
@@ -280,6 +282,85 @@ impl Default for LyricsStatus {
   }
 }
 
+/// Settings screen category tabs
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum SettingsCategory {
+  #[default]
+  Behavior,
+  Keybindings,
+  Theme,
+}
+
+impl SettingsCategory {
+  pub fn all() -> &'static [SettingsCategory] {
+    &[
+      SettingsCategory::Behavior,
+      SettingsCategory::Keybindings,
+      SettingsCategory::Theme,
+    ]
+  }
+
+  pub fn name(&self) -> &'static str {
+    match self {
+      SettingsCategory::Behavior => "Behavior",
+      SettingsCategory::Keybindings => "Keybindings",
+      SettingsCategory::Theme => "Theme",
+    }
+  }
+
+  pub fn index(&self) -> usize {
+    match self {
+      SettingsCategory::Behavior => 0,
+      SettingsCategory::Keybindings => 1,
+      SettingsCategory::Theme => 2,
+    }
+  }
+
+  pub fn from_index(index: usize) -> Self {
+    match index {
+      0 => SettingsCategory::Behavior,
+      1 => SettingsCategory::Keybindings,
+      2 => SettingsCategory::Theme,
+      _ => SettingsCategory::Behavior,
+    }
+  }
+}
+
+/// Represents a setting's value type
+#[derive(Clone, PartialEq, Debug)]
+pub enum SettingValue {
+  Bool(bool),
+  Number(i64),
+  String(String),
+  Color(String),  // Stored as "R,G,B" or color name
+  Key(String),    // Key representation like "ctrl-s" or "a"
+  Preset(String), // Theme preset name - cycles through available presets
+}
+
+impl SettingValue {
+  #[allow(dead_code)]
+  pub fn display(&self) -> String {
+    match self {
+      SettingValue::Bool(v) => if *v { "On" } else { "Off" }.to_string(),
+      SettingValue::Number(v) => v.to_string(),
+      SettingValue::String(v) => v.clone(),
+      SettingValue::Color(v) => v.clone(),
+      SettingValue::Key(v) => v.clone(),
+      SettingValue::Preset(v) => v.clone(),
+    }
+  }
+}
+
+/// Represents a single configurable setting
+#[derive(Clone, Debug)]
+pub struct SettingItem {
+  pub id: String,   // e.g., "behavior.seek_milliseconds"
+  pub name: String, // e.g., "Seek Duration"
+  #[allow(dead_code)]
+  pub description: String, // e.g., "Milliseconds to skip when seeking" (for future tooltip)
+  pub value: SettingValue,
+}
+
 pub struct App {
   pub instant_since_last_current_playback_poll: Instant,
   navigation_stack: Vec<Route>,
@@ -355,6 +436,12 @@ pub struct App {
   pub update_prompt_acknowledged: bool,
   pub lyrics: Option<Vec<(u128, String)>>,
   pub lyrics_status: LyricsStatus,
+  // Settings screen state
+  pub settings_category: SettingsCategory,
+  pub settings_items: Vec<SettingItem>,
+  pub settings_selected_index: usize,
+  pub settings_edit_mode: bool,
+  pub settings_edit_buffer: String,
 }
 
 impl Default for App {
@@ -448,6 +535,12 @@ impl Default for App {
       update_prompt_acknowledged: false,
       lyrics: None,
       lyrics_status: LyricsStatus::default(),
+      // Settings defaults
+      settings_category: SettingsCategory::default(),
+      settings_items: Vec::new(),
+      settings_selected_index: 0,
+      settings_edit_mode: false,
+      settings_edit_buffer: String::new(),
     }
   }
 }
