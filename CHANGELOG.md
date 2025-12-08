@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.33.0] - 2025-12-08
+
+### Added
+
+- **In-App Settings Screen**: Press `Alt-,` to open a new settings UI for customizing Spotatui without editing config files
+  - **Behavior Settings**: Adjust seek duration, volume increment, tick rate, icons, and toggle options
+  - **Keybindings**: View current keybindings (editing coming in future release)
+  - **Theme Presets**: Choose from 7 built-in themes with instant preview
+- **Theme Presets**: Added 6 new color schemes in addition to the default:
+  - **Spotify** - Official Spotify green (#1DB954) theme
+  - **Dracula** - Popular dark purple/pink theme
+  - **Nord** - Arctic, bluish color palette
+  - **Solarized Dark** - Classic dark theme
+  - **Monokai** - Vibrant colors on dark background
+  - **Gruvbox** - Warm retro groove colors
+- **Configuration Persistence**: Settings changes are saved immediately to `config.yml` - no restart required
+
+### Changed
+
+- Updated README with In-App Settings documentation and theme preset table
+- Updated bug report template with terminal-specific fields (OS, Terminal, Version) instead of browser/smartphone fields
+- **Native Streaming Optimizations**: When using native streaming, seek/pause/volume changes now happen instantly without API round-trips
+- **Reduced API Delays**: Lowered playback control delays (seek: 1000ms → 200ms, next/prev: 250ms → 100ms) for snappier response
+- Added Settings keybinding (`Alt-,`) to the help menu
+
+### Fixed
+
+- **Cross-Terminal Color Compatibility**: Use explicit RGB values instead of named ANSI colors throughout the UI for consistent rendering across terminals (fixes display issues on Kitty, Alacritty, etc.)
+  - Audio visualization bar colors
+  - Lyrics display (active/inactive lines)
+  - Changelog section headers (Added/Fixed/Changed/etc.)
+- **Streaming Player Events**: Improved player event handling to avoid deadlocks by releasing mutex locks before dispatching IO events
+- **Settings Route Handling**: Added missing `RouteId::Settings` case in navigation handler to prevent unexpected behavior
+
 ## [0.32.0] - 2025-12-07
 
 ### Added

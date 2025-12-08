@@ -40,10 +40,11 @@ We respect your privacy. This is purely a fun community metric with zero trackin
       - [Linux Requirements](#linux-requirements)
     - [Cargo](#cargo)
     - [Building from Source](#building-from-source)
-  - [Connecting to Spotify’s API](#connecting-to-spotifys-api)
+  - [Connecting to Spotify's API](#connecting-to-spotifys-api)
   - [Usage](#usage)
   - [Native Streaming (Experimental)](#native-streaming-experimental)
 - [Configuration](#configuration)
+- [In-App Settings](#in-app-settings)
   - [Limitations](#limitations)
     - [Deprecated Spotify API Features](#deprecated-spotify-api-features)
   - [Using with spotifyd](#using-with-spotifyd)
@@ -303,6 +304,45 @@ keybindings:
   basic_view: "B"
   add_item_to_queue: "z"
 ```
+
+## In-App Settings
+
+Press `Alt-,` to open the **Settings** screen, where you can customize Spotatui without editing config files manually.
+
+### Settings Categories
+
+| Category | Description |
+|----------|-------------|
+| **Behavior** | Seek duration, volume increment, tick rate, icons, toggles |
+| **Keybindings** | View current keybindings (customization coming soon) |
+| **Theme** | Color presets and individual color customization |
+
+### Theme Presets
+
+Choose from 7 built-in theme presets:
+
+| Preset | Description |
+|--------|-------------|
+| Default (Cyan) | Original Spotatui theme |
+| Spotify | Official Spotify green (#1DB954) |
+| Dracula | Popular dark purple/pink theme |
+| Nord | Arctic, bluish color palette |
+| Solarized Dark | Classic dark theme |
+| Monokai | Vibrant colors on dark background |
+| Gruvbox | Warm retro groove colors |
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `Alt-,` | Open Settings |
+| `←` / `→` | Switch category tabs |
+| `↑` / `↓` | Navigate settings |
+| `Enter` | Toggle boolean / Cycle preset / Edit value |
+| `Alt-S` | Save changes |
+| `Esc` | Exit Settings |
+
+Changes are applied **immediately** when saved - no restart required!
 
 ## Limitations
 
