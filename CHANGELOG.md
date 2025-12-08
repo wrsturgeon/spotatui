@@ -8,6 +8,12 @@
   - Previously, only pre-built binaries had audio visualization enabled
   - Uses cross-platform `cpal` library for Windows, macOS, and Linux support
 
+### Added
+
+- **Volume Persistence**: Volume setting now persists across application restarts (thanks to Reddit user u/Ratox for the suggestion!)
+  - Saved in `config.yml` under `behavior.volume_percent`
+  - Applied automatically when native streaming starts
+
 ### Changed
 
 - Updated README with detailed audio visualization platform support table:

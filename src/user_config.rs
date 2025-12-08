@@ -412,6 +412,7 @@ pub struct KeyBindings {
 pub struct BehaviorConfigString {
   pub seek_milliseconds: Option<u32>,
   pub volume_increment: Option<u8>,
+  pub volume_percent: Option<u8>,
   pub tick_rate_milliseconds: Option<u64>,
   pub enable_text_emphasis: Option<bool>,
   pub show_loading_indicator: Option<bool>,
@@ -430,6 +431,7 @@ pub struct BehaviorConfigString {
 pub struct BehaviorConfig {
   pub seek_milliseconds: u32,
   pub volume_increment: u8,
+  pub volume_percent: u8,
   pub tick_rate_milliseconds: u64,
   pub enable_text_emphasis: bool,
   pub show_loading_indicator: bool,
@@ -494,6 +496,7 @@ impl UserConfig {
       behavior: BehaviorConfig {
         seek_milliseconds: 5 * 1000,
         volume_increment: 10,
+        volume_percent: 100,
         tick_rate_milliseconds: 16,
         enable_text_emphasis: true,
         show_loading_indicator: true,
@@ -620,6 +623,10 @@ impl UserConfig {
       self.behavior.volume_increment = behavior_string;
     }
 
+    if let Some(volume) = behavior_config.volume_percent {
+      self.behavior.volume_percent = volume.min(100);
+    }
+
     if let Some(tick_rate) = behavior_config.tick_rate_milliseconds {
       if tick_rate >= 1000 {
         return Err(anyhow!("Tick rate must be below 1000"));
@@ -720,6 +727,7 @@ impl UserConfig {
     let build_behavior = || BehaviorConfigString {
       seek_milliseconds: Some(self.behavior.seek_milliseconds),
       volume_increment: Some(self.behavior.volume_increment),
+      volume_percent: Some(self.behavior.volume_percent),
       tick_rate_milliseconds: Some(self.behavior.tick_rate_milliseconds),
       enable_text_emphasis: Some(self.behavior.enable_text_emphasis),
       show_loading_indicator: Some(self.behavior.show_loading_indicator),

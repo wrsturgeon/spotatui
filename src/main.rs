@@ -442,7 +442,7 @@ of the app. Beware that this comes at a CPU cost!",
         bitrate: client_config.streaming_bitrate,
         audio_cache: client_config.streaming_audio_cache,
         cache_path: player::get_default_cache_path(),
-        initial_volume: 100, // Default to full volume
+        initial_volume: user_config.behavior.volume_percent,
       };
 
       let redirect_uri = client_config.get_redirect_uri();

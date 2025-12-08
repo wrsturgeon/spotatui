@@ -1158,6 +1158,9 @@ impl Network {
         if let Some(ctx) = &mut app.current_playback_context {
           ctx.device.volume_percent = Some(volume_percent.into());
         }
+        // Persist volume setting
+        app.user_config.behavior.volume_percent = volume_percent;
+        let _ = app.user_config.save_config();
         return;
       }
     }
@@ -1173,6 +1176,9 @@ impl Network {
         if let Some(current_playback_context) = &mut app.current_playback_context {
           current_playback_context.device.volume_percent = Some(volume_percent.into());
         };
+        // Persist volume setting
+        app.user_config.behavior.volume_percent = volume_percent;
+        let _ = app.user_config.save_config();
       }
       Err(e) => {
         self.handle_error(anyhow!(e)).await;
