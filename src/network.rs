@@ -1252,37 +1252,52 @@ impl Network {
       input_artist_name
     };
     let top_tracks = self.spotify.artist_top_tracks(artist_id.clone(), market);
-    #[allow(deprecated)]
-    let related_artist = self.spotify.artist_related_artists(artist_id);
 
-    if let Ok((albums, top_tracks, related_artist)) = try_join!(albums, top_tracks, related_artist)
-    {
-      let mut app = self.app.lock().await;
+    // Fetch required data (albums and top_tracks)
+    match try_join!(albums, top_tracks) {
+      Ok((albums, top_tracks)) => {
+        // Try to fetch related artists, but don't fail if it's unavailable (deprecated endpoint)
+        #[allow(deprecated)]
+        let related_artist = self
+          .spotify
+          .artist_related_artists(artist_id.clone())
+          .await
+          .unwrap_or_else(|_| Vec::new());
 
-      app.dispatch(IoEvent::CurrentUserSavedAlbumsContains(
-        albums
-          .items
-          .iter()
-          .filter_map(|item| {
-            item
-              .id
-              .as_ref()
-              .map(|id| AlbumId::from_id(id.id()).unwrap().into_static())
-          })
-          .collect(),
-      ));
+        let mut app = self.app.lock().await;
 
-      app.artist = Some(Artist {
-        artist_name,
-        albums,
-        related_artists: related_artist,
-        top_tracks,
-        selected_album_index: 0,
-        selected_related_artist_index: 0,
-        selected_top_track_index: 0,
-        artist_hovered_block: ArtistBlock::TopTracks,
-        artist_selected_block: ArtistBlock::Empty,
-      });
+        app.dispatch(IoEvent::CurrentUserSavedAlbumsContains(
+          albums
+            .items
+            .iter()
+            .filter_map(|item| {
+              item
+                .id
+                .as_ref()
+                .map(|id| AlbumId::from_id(id.id()).unwrap().into_static())
+            })
+            .collect(),
+        ));
+
+        app.artist = Some(Artist {
+          artist_name,
+          albums,
+          related_artists: related_artist,
+          top_tracks,
+          selected_album_index: 0,
+          selected_related_artist_index: 0,
+          selected_top_track_index: 0,
+          artist_hovered_block: ArtistBlock::TopTracks,
+          artist_selected_block: ArtistBlock::Empty,
+        });
+        app.push_navigation_stack(RouteId::Artist, ActiveBlock::ArtistBlock);
+      }
+      Err(e) => {
+        eprintln!("DEBUG: Error fetching artist: {:?}", e);
+        self
+          .handle_error(anyhow!("Failed to fetch artist: {}", e))
+          .await;
+      }
     }
   }
 

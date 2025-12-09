@@ -139,8 +139,9 @@ fn attempt_process_uri(app: &mut App, input: &str, base: &str, sep: &str) -> boo
 
   let (artist_id, matched) = spotify_resource_id(base, input, sep, "artist");
   if matched {
-    app.get_artist(artist_id, "".to_string());
-    app.push_navigation_stack(RouteId::Artist, ActiveBlock::ArtistBlock);
+    if let Ok(artist_id) = rspotify::model::idtypes::ArtistId::from_id(&artist_id) {
+      app.get_artist(artist_id.into_static(), "".to_string());
+    }
     return true;
   }
 

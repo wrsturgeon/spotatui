@@ -29,7 +29,6 @@ use crate::event::Key;
 use crate::network::IoEvent;
 use rspotify::model::idtypes::PlaylistId;
 use rspotify::model::{context::CurrentPlaybackContext, PlayableItem};
-use rspotify::prelude::Id;
 
 pub use input::handler as input_handler;
 
@@ -254,9 +253,8 @@ fn handle_jump_to_artist_album(app: &mut App) {
     match item {
       PlayableItem::Track(track) => {
         if let Some(artist) = track.artists.first() {
-          if let Some(artist_id) = artist.id.clone() {
-            app.get_artist(artist_id.id().to_string(), artist.name.clone());
-            app.push_navigation_stack(RouteId::Artist, ActiveBlock::ArtistBlock);
+          if let Some(artist_id) = &artist.id {
+            app.get_artist(artist_id.as_ref().into_static(), artist.name.clone());
           }
         }
       }

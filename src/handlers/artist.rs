@@ -219,9 +219,9 @@ fn handle_enter_event_on_selected_block(app: &mut App) {
       }
       ArtistBlock::RelatedArtists => {
         let selected_index = artist.selected_related_artist_index;
-        let artist_id = artist.related_artists[selected_index].id.clone();
+        let artist_id = artist.related_artists[selected_index].id.as_ref().into_static();
         let artist_name = artist.related_artists[selected_index].name.clone();
-        app.get_artist(artist_id.id().to_string(), artist_name);
+        app.get_artist(artist_id, artist_name);
       }
       ArtistBlock::Empty => {}
     }

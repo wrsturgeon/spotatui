@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.33.7] - 2025-12-09
+
+### Fixed
+
+- **Artist View from Search**: Fixed issue where selecting an artist from search results would show a 404 error instead of loading the artist view
+  - Root cause: The deprecated `related-artists` Spotify API endpoint was returning 404, blocking the entire artist view from loading
+  - Fix: Made related artists fetch optional - artist view now loads successfully with albums and top tracks even if related artists endpoint fails
+  - Related artists section will be empty when the endpoint is unavailable, but core artist information displays correctly
+
 ## [0.33.6] - 2025-12-09
 
 ### Added

@@ -1,6 +1,6 @@
 use super::common_key_events;
 use crate::{
-  app::{ActiveBlock, App, RecommendationsContext, RouteId},
+  app::{ActiveBlock, App, RecommendationsContext},
   event::Key,
   network::IoEvent,
 };
@@ -45,8 +45,7 @@ pub fn handler(key: Key, app: &mut App) {
       let artists = app.artists.to_owned();
       if !artists.is_empty() {
         let artist = &artists[app.artists_list_index];
-        app.get_artist(artist.id.id().to_string(), artist.name.clone());
-        app.push_navigation_stack(RouteId::Artist, ActiveBlock::ArtistBlock);
+        app.get_artist(artist.id.as_ref().into_static(), artist.name.clone());
       }
     }
     Key::Char('D') => app.user_unfollow_artists(ActiveBlock::AlbumList),

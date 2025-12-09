@@ -316,8 +316,7 @@ fn handle_enter_event_on_selected_block(app: &mut App) {
       if let Some(index) = &app.search_results.selected_artists_index {
         if let Some(result) = app.search_results.artists.clone() {
           if let Some(artist) = result.items.get(index.to_owned()) {
-            app.get_artist(artist.id.id().to_string(), artist.name.clone());
-            app.push_navigation_stack(RouteId::Artist, ActiveBlock::ArtistBlock);
+            app.get_artist(artist.id.as_ref().into_static(), artist.name.clone());
           };
         };
       };

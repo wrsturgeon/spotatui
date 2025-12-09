@@ -1363,15 +1363,13 @@ impl App {
     }
   }
 
-  pub fn get_artist(&mut self, artist_id: String, input_artist_name: String) {
+  pub fn get_artist(&mut self, artist_id: ArtistId<'static>, input_artist_name: String) {
     let user_country = self.get_user_country();
-    if let Ok(artist_id) = ArtistId::from_id(artist_id) {
-      self.dispatch(IoEvent::GetArtist(
-        artist_id,
-        input_artist_name,
-        user_country,
-      ));
-    }
+    self.dispatch(IoEvent::GetArtist(
+      artist_id,
+      input_artist_name,
+      user_country,
+    ));
   }
 
   pub fn get_user_country(&self) -> Option<Country> {
