@@ -18,6 +18,8 @@
   - Fix: Only preserve volume, shuffle, and repeat states when native streaming is active - `is_playing` now comes from the API response or player events
   - Result: Playbar correctly shows "Playing" and reset progress when skipping tracks
 
+- **Shuffle Not Actually Enabling with Native Streaming**: Shuffle preference is now sent to librespot on startup and when toggling, with device activation to ensure it applies; UI and saved config stay in sync so shuffle really plays shuffled.
+
 - **Playbar Shows Old Track After Skip**: Fixed delay where playbar would briefly show the previous song's name/artist after skipping
   - Root cause: `native_track_info` (instant track info from native player) was unconditionally cleared when API response arrived, even if API returned stale data for the old track
   - Fix: Only clear `native_track_info` when API track name matches the native player's track

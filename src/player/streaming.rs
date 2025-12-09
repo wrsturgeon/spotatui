@@ -299,6 +299,11 @@ impl StreamingPlayer {
     self.player.seek(position_ms);
   }
 
+  /// Toggle shuffle mode via the underlying Spotify Connect session
+  pub fn set_shuffle(&self, shuffle: bool) -> Result<()> {
+    Ok(self.spirc.shuffle(shuffle)?)
+  }
+
   /// Set the volume (0-100)
   pub fn set_volume(&self, volume: u8) {
     let volume_u16 = (f64::from(volume.min(100)) / 100.0 * 65535.0).round() as u16;

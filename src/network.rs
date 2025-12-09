@@ -442,6 +442,18 @@ impl Network {
           c.repeat_state = repeat;
         }
 
+        // On first load with native streaming, override API shuffle with saved preference.
+        // The Web API may report stale server state before librespot catches up.
+        #[cfg(feature = "streaming")]
+        if self.is_native_streaming_active() && local_state.is_none() {
+          c.shuffle_state = app.user_config.behavior.shuffle_enabled;
+          // Proactively set native shuffle on first load to keep backend in sync
+          if let Some(ref player) = self.streaming_player {
+            player.activate();
+            let _ = player.set_shuffle(app.user_config.behavior.shuffle_enabled);
+          }
+        }
+
         app.current_playback_context = Some(c);
         // Only clear native track info if API data matches the native player's track
         // This prevents stale API responses (returning old track) from clearing
@@ -1087,23 +1099,26 @@ impl Network {
   async fn shuffle(&mut self, desired_shuffle_state: bool) {
     let new_shuffle_state = desired_shuffle_state;
 
-    // When using native streaming, update UI immediately for instant feedback
+    // Prefer native streaming control when available
     #[cfg(feature = "streaming")]
-    if self.is_native_streaming_active() {
-      {
-        let mut app = self.app.lock().await;
-        if let Some(ctx) = &mut app.current_playback_context {
-          ctx.shuffle_state = new_shuffle_state;
+    if let Some(ref player) = self.streaming_player {
+      player.activate();
+      match player.set_shuffle(new_shuffle_state) {
+        Ok(()) => {
+          // Update UI immediately
+          let mut app = self.app.lock().await;
+          if let Some(ctx) = &mut app.current_playback_context {
+            ctx.shuffle_state = new_shuffle_state;
+          }
+          app.user_config.behavior.shuffle_enabled = new_shuffle_state;
+          let _ = app.user_config.save_config();
+          return;
         }
-        app.user_config.behavior.shuffle_enabled = new_shuffle_state;
-        let _ = app.user_config.save_config();
+        Err(e) => {
+          // Fall back to API path, but surface the native error for visibility
+          self.handle_error(anyhow!(e)).await;
+        }
       }
-      // Still send to API to sync server state (fire and forget - don't wait)
-      let _ = self
-        .spotify
-        .shuffle(new_shuffle_state, self.client_config.device_id.as_deref())
-        .await;
-      return;
     }
 
     // Fallback: API-based shuffle (updates UI after API call succeeds)
