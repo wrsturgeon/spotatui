@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.33.8] - 2025-12-09
+
+### Changed
+
+- **Smaller Binary Size**: Added Ratatui-recommended release optimizations, reducing binary size by ~62% (26MB → 9.9MB)
+  - Enabled Link-Time Optimization (LTO)
+  - Single codegen unit for better optimization
+  - Strip debug symbols
+  - Optimized for size (`opt-level = "s"`)
+  - Thanks to zamazan4ik for the suggestion in Issue #5!
+
 ## [0.33.7] - 2025-12-09
 
 ### Fixed
