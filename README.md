@@ -599,14 +599,9 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
 
 ## Star History
+## Star History
 
-<a href="https://www.star-history.com/?secret=STAR_TOKEN#LargeModGames/spotatui&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=LargeModGames/spotatui&type=date&theme=dark&legend=top-left&secret=STAR_TOKEN" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=LargeModGames/spotatui&type=date&legend=top-left&secret=STAR_TOKEN" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=LargeModGames/spotatui&type=date&legend=top-left&secret=STAR_TOKEN" />
- </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/svg?repos=LargeModGames/spotatui&type=date&legend=top-left)](https://www.star-history.com/?secret=STAR_TOKEN#LargeModGames/spotatui&type=date&legend=top-left)
 
 ## Roadmap
 
