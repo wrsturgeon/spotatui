@@ -49,6 +49,7 @@ We respect your privacy. This is purely a fun community metric with zero trackin
   - [Installation](#installation)
     - [Pre-built Binaries](#pre-built-binaries)
       - [Linux Requirements](#linux-requirements)
+      - [macOS Requirements](#macos-requirements)
     - [Arch Linux (AUR)](#arch-linux-aur)
     - [Cargo](#cargo)
     - [Building from Source](#building-from-source)
@@ -127,6 +128,16 @@ sudo dnf install pipewire
 
 > **Note:** Most modern Linux distributions already have PipeWire installed by default.
 
+#### macOS Requirements
+
+For macOS, `spotatui` uses the `portaudio` backend for better stability and bluetooth device support (such as AirPods).
+
+`portaudio` needs to be installed first, via homebrew:
+
+```bash
+brew install portaudio
+```
+
 ### Arch Linux (AUR)
 
 For Arch Linux users, spotatui is available in the AUR:
@@ -149,16 +160,6 @@ cargo install spotatui
 > ```bash
 > sudo apt install libssl-dev pkg-config
 > ```
-
-### macOS
-
-For macOS, `spotatui` uses the `portaudio` backend for better stability and bluetooth device support (such as AirPods).
-
-`portaudio` needs to be installed first, via homebrew:
-
-```bash
-brew install portaudio
-```
 
 ### Building from Source
 
