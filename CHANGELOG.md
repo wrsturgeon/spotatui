@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.34.1] - TBD
+
+### Fixed
+
+- **macOS SIGSEGV Crash on Startup**: Fixed segmentation fault when launching spotatui on macOS with Bluetooth audio devices connected
+  - Switched from rodio to portaudio audio backend for macOS builds
+  - Portaudio provides better compatibility with macOS CoreAudio and Bluetooth devices (AirPods, etc.)
+  - Pre-built macOS binaries now use portaudio backend by default
+  - Fixes crash during "Initializing Spirc" on macOS Sequoia and later
+
 ## [0.34.0] - 2025-12-10
 
 ### Added
