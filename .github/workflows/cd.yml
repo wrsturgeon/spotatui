@@ -59,19 +59,10 @@ jobs:
 
       - name: Build release binary
         run: |
-          # Build natively for macOS to avoid portaudio cross-compilation issues
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            if [ -z "${{ matrix.audio_features }}" ]; then
-              cargo build --release --no-default-features --features telemetry,streaming
-            else
-              cargo build --release --no-default-features --features telemetry,streaming,${{ matrix.audio_features }}
-            fi
+          if [ -z "${{ matrix.audio_features }}" ]; then
+            cargo build --release --target ${{ matrix.target }} --no-default-features --features telemetry,streaming
           else
-            if [ -z "${{ matrix.audio_features }}" ]; then
-              cargo build --release --target ${{ matrix.target }} --no-default-features --features telemetry,streaming
-            else
-              cargo build --release --target ${{ matrix.target }} --no-default-features --features telemetry,streaming,${{ matrix.audio_features }}
-            fi
+            cargo build --release --target ${{ matrix.target }} --no-default-features --features telemetry,streaming,${{ matrix.audio_features }}
           fi
         shell: bash
 
@@ -79,12 +70,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          # Use native target path for macOS, specified target for others
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            cd target/release
-          else
-            cd target/${{ matrix.target }}/release
-          fi
+          cd target/${{ matrix.target }}/release
           BINARY=${{ env.BINARY_NAME }}${{ matrix.binary_postfix }}
           strip $BINARY || true
           RELEASE_NAME=${{ env.BINARY_NAME }}-${{ matrix.artifact_prefix }}
