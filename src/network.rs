@@ -1509,24 +1509,25 @@ impl Network {
   async fn shuffle(&mut self, desired_shuffle_state: bool) {
     let new_shuffle_state = desired_shuffle_state;
 
-    // Prefer native streaming control when available
+    // Prefer native streaming control when available AND active as playback device
     #[cfg(feature = "streaming")]
-    if let Some(ref player) = self.streaming_player {
-      player.activate();
-      match player.set_shuffle(new_shuffle_state) {
-        Ok(()) => {
-          // Update UI immediately
-          let mut app = self.app.lock().await;
-          if let Some(ctx) = &mut app.current_playback_context {
-            ctx.shuffle_state = new_shuffle_state;
+    if self.is_native_streaming_active_for_playback().await {
+      if let Some(ref player) = self.streaming_player {
+        match player.set_shuffle(new_shuffle_state) {
+          Ok(()) => {
+            // Update UI immediately
+            let mut app = self.app.lock().await;
+            if let Some(ctx) = &mut app.current_playback_context {
+              ctx.shuffle_state = new_shuffle_state;
+            }
+            app.user_config.behavior.shuffle_enabled = new_shuffle_state;
+            let _ = app.user_config.save_config();
+            return;
           }
-          app.user_config.behavior.shuffle_enabled = new_shuffle_state;
-          let _ = app.user_config.save_config();
-          return;
-        }
-        Err(e) => {
-          // Fall back to API path, but surface the native error for visibility
-          self.handle_error(anyhow!(e)).await;
+          Err(e) => {
+            // Fall back to API path, but surface the native error for visibility
+            self.handle_error(anyhow!(e)).await;
+          }
         }
       }
     }
