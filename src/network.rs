@@ -1444,8 +1444,9 @@ impl Network {
 
   async fn previous_track(&mut self) {
     // Use native streaming player for instant skip (no network delay)
+    // BUT only if native streaming device is the active playback device
     #[cfg(feature = "streaming")]
-    if self.is_native_streaming_active() {
+    if self.is_native_streaming_active_for_playback().await {
       if let Some(ref player) = self.streaming_player {
         player.activate();
         player.prev();
