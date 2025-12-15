@@ -1,3 +1,30 @@
+#[cfg(all(target_os = "linux", feature = "streaming"))]
+mod alsa_silence {
+  use std::os::raw::{c_char, c_int};
+
+  type SndLibErrorHandlerT =
+    Option<unsafe extern "C" fn(*const c_char, c_int, *const c_char, c_int, *const c_char)>;
+
+  extern "C" {
+    fn snd_lib_error_set_handler(handler: SndLibErrorHandlerT) -> c_int;
+  }
+
+  unsafe extern "C" fn silent_error_handler(
+    _file: *const c_char,
+    _line: c_int,
+    _function: *const c_char,
+    _err: c_int,
+    _fmt: *const c_char,
+  ) {
+  }
+
+  pub fn suppress_alsa_errors() {
+    unsafe {
+      snd_lib_error_set_handler(Some(silent_error_handler));
+    }
+  }
+}
+
 mod app;
 #[cfg(any(feature = "audio-viz", feature = "audio-viz-cpal"))]
 mod audio;
@@ -111,6 +138,14 @@ fn close_application() -> Result<()> {
   Ok(())
 }
 
+#[cfg(all(target_os = "linux", feature = "streaming"))]
+fn init_audio_backend() {
+  alsa_silence::suppress_alsa_errors();
+}
+
+#[cfg(not(all(target_os = "linux", feature = "streaming")))]
+fn init_audio_backend() {}
+
 fn panic_hook(info: &PanicHookInfo<'_>) {
   if cfg!(debug_assertions) {
     let location = info.location().unwrap();
@@ -141,6 +176,8 @@ fn panic_hook(info: &PanicHookInfo<'_>) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+  init_audio_backend();
+
   panic::set_hook(Box::new(|info| {
     panic_hook(info);
   }));
@@ -1115,107 +1152,110 @@ async fn start_ui(
   let mut is_first_render = true;
 
   loop {
-    let mut app = app.lock().await;
-
-    // MPRIS device change detection: When switching from native streaming to
-    // an external device (like spotifyd), set MPRIS to stopped so the external
-    // player's MPRIS interface takes precedence in desktop widgets
-    #[cfg(feature = "mpris")]
     {
-      let current_is_streaming_active = app.is_streaming_active;
-      if prev_is_streaming_active && !current_is_streaming_active {
-        // Switched away from native streaming to external device
-        if let Some(ref mpris) = mpris_manager {
-          mpris.set_stopped();
+      let mut app = app.lock().await;
+
+      // MPRIS device change detection: When switching from native streaming to
+      // an external device (like spotifyd), set MPRIS to stopped so the external
+      // player's MPRIS interface takes precedence in desktop widgets
+      #[cfg(feature = "mpris")]
+      {
+        let current_is_streaming_active = app.is_streaming_active;
+        if prev_is_streaming_active && !current_is_streaming_active {
+          // Switched away from native streaming to external device
+          if let Some(ref mpris) = mpris_manager {
+            mpris.set_stopped();
+          }
         }
+        prev_is_streaming_active = current_is_streaming_active;
       }
-      prev_is_streaming_active = current_is_streaming_active;
-    }
 
-    // Get the size of the screen on each loop to account for resize event
-    if let Ok(size) = terminal.backend().size() {
-      // Reset the help menu is the terminal was resized
-      if is_first_render || app.size != size {
-        app.help_menu_max_lines = 0;
-        app.help_menu_offset = 0;
-        app.help_menu_page = 0;
-
-        app.size = size;
-
-        // Based on the size of the terminal, adjust the search limit.
-        let potential_limit = max((app.size.height as i32) - 13, 0) as u32;
-        let max_limit = min(potential_limit, 50);
-        let large_search_limit = min((f32::from(size.height) / 1.4) as u32, max_limit);
-        let small_search_limit = min((f32::from(size.height) / 2.85) as u32, max_limit / 2);
-
-        app.dispatch(IoEvent::UpdateSearchLimits(
-          large_search_limit,
-          small_search_limit,
-        ));
-
-        // Based on the size of the terminal, adjust how many lines are
-        // displayed in the help menu
-        if app.size.height > 8 {
-          app.help_menu_max_lines = (app.size.height as u32) - 8;
-        } else {
+      // Get the size of the screen on each loop to account for resize event
+      if let Ok(size) = terminal.backend().size() {
+        // Reset the help menu is the terminal was resized
+        if is_first_render || app.size != size {
           app.help_menu_max_lines = 0;
+          app.help_menu_offset = 0;
+          app.help_menu_page = 0;
+
+          app.size = size;
+
+          // Based on the size of the terminal, adjust the search limit.
+          let potential_limit = max((app.size.height as i32) - 13, 0) as u32;
+          let max_limit = min(potential_limit, 50);
+          let large_search_limit = min((f32::from(size.height) / 1.4) as u32, max_limit);
+          let small_search_limit = min((f32::from(size.height) / 2.85) as u32, max_limit / 2);
+
+          app.dispatch(IoEvent::UpdateSearchLimits(
+            large_search_limit,
+            small_search_limit,
+          ));
+
+          // Based on the size of the terminal, adjust how many lines are
+          // displayed in the help menu
+          if app.size.height > 8 {
+            app.help_menu_max_lines = (app.size.height as u32) - 8;
+          } else {
+            app.help_menu_max_lines = 0;
+          }
         }
-      }
-    };
+      };
 
-    let current_route = app.get_current_route();
-    terminal.draw(|f| match current_route.active_block {
-      ActiveBlock::HelpMenu => {
-        ui::draw_help_menu(f, &app);
-      }
-      ActiveBlock::Error => {
-        ui::draw_error_screen(f, &app);
-      }
-      ActiveBlock::SelectDevice => {
-        ui::draw_device_list(f, &app);
-      }
-      ActiveBlock::Analysis => {
-        ui::audio_analysis::draw(f, &app);
-      }
-      ActiveBlock::BasicView => {
-        ui::draw_basic_view(f, &app);
-      }
-      ActiveBlock::UpdatePrompt => {
-        ui::draw_update_prompt(f, &app);
-      }
-      ActiveBlock::Settings => {
-        ui::settings::draw_settings(f, &app);
-      }
-      _ => {
-        ui::draw_main_layout(f, &app);
-      }
-    })?;
+      let current_route = app.get_current_route();
+      terminal.draw(|f| match current_route.active_block {
+        ActiveBlock::HelpMenu => {
+          ui::draw_help_menu(f, &app);
+        }
+        ActiveBlock::Error => {
+          ui::draw_error_screen(f, &app);
+        }
+        ActiveBlock::SelectDevice => {
+          ui::draw_device_list(f, &app);
+        }
+        ActiveBlock::Analysis => {
+          ui::audio_analysis::draw(f, &app);
+        }
+        ActiveBlock::BasicView => {
+          ui::draw_basic_view(f, &app);
+        }
+        ActiveBlock::UpdatePrompt => {
+          ui::draw_update_prompt(f, &app);
+        }
+        ActiveBlock::Settings => {
+          ui::settings::draw_settings(f, &app);
+        }
+        _ => {
+          ui::draw_main_layout(f, &app);
+        }
+      })?;
 
-    if current_route.active_block == ActiveBlock::Input {
-      terminal.show_cursor()?;
-    } else {
-      terminal.hide_cursor()?;
-    }
+      if current_route.active_block == ActiveBlock::Input {
+        terminal.show_cursor()?;
+      } else {
+        terminal.hide_cursor()?;
+      }
 
-    let cursor_offset = if app.size.height > ui::util::SMALL_TERMINAL_HEIGHT {
-      2
-    } else {
-      1
-    };
+      let cursor_offset = if app.size.height > ui::util::SMALL_TERMINAL_HEIGHT {
+        2
+      } else {
+        1
+      };
 
-    // Put the cursor back inside the input box
-    terminal.backend_mut().execute(MoveTo(
-      cursor_offset + app.input_cursor_position,
-      cursor_offset,
-    ))?;
+      // Put the cursor back inside the input box
+      terminal.backend_mut().execute(MoveTo(
+        cursor_offset + app.input_cursor_position,
+        cursor_offset,
+      ))?;
 
-    // Handle authentication refresh
-    if SystemTime::now() > app.spotify_token_expiry {
-      app.dispatch(IoEvent::RefreshAuthentication);
+      // Handle authentication refresh
+      if SystemTime::now() > app.spotify_token_expiry {
+        app.dispatch(IoEvent::RefreshAuthentication);
+      }
     }
 
     match events.next()? {
       event::Event::Input(key) => {
+        let mut app = app.lock().await;
         if key == Key::Ctrl('c') {
           app.close_io_channel();
           break;
@@ -1246,6 +1286,7 @@ async fn start_ui(
         }
       }
       event::Event::Tick => {
+        let mut app = app.lock().await;
         app.update_on_tick();
 
         // Read position from shared atomic if native streaming is active
@@ -1296,6 +1337,7 @@ async fn start_ui(
     // Delay spotify request until first render, will have the effect of improving
     // startup speed
     if is_first_render {
+      let mut app = app.lock().await;
       app.dispatch(IoEvent::GetPlaylists);
       app.dispatch(IoEvent::GetUser);
       app.dispatch(IoEvent::GetCurrentPlayback);
@@ -1358,67 +1400,70 @@ async fn start_ui(
   let mut is_first_render = true;
 
   loop {
-    let mut app = app.lock().await;
+    {
+      let mut app = app.lock().await;
 
-    if let Ok(size) = terminal.backend().size() {
-      if is_first_render || app.size != size {
-        app.help_menu_max_lines = 0;
-        app.help_menu_offset = 0;
-        app.help_menu_page = 0;
-        app.size = size;
-
-        let potential_limit = max((app.size.height as i32) - 13, 0) as u32;
-        let max_limit = min(potential_limit, 50);
-        let large_search_limit = min((f32::from(size.height) / 1.4) as u32, max_limit);
-        let small_search_limit = min((f32::from(size.height) / 2.85) as u32, max_limit / 2);
-
-        app.dispatch(IoEvent::UpdateSearchLimits(
-          large_search_limit,
-          small_search_limit,
-        ));
-
-        if app.size.height > 8 {
-          app.help_menu_max_lines = (app.size.height as u32) - 8;
-        } else {
+      if let Ok(size) = terminal.backend().size() {
+        if is_first_render || app.size != size {
           app.help_menu_max_lines = 0;
+          app.help_menu_offset = 0;
+          app.help_menu_page = 0;
+          app.size = size;
+
+          let potential_limit = max((app.size.height as i32) - 13, 0) as u32;
+          let max_limit = min(potential_limit, 50);
+          let large_search_limit = min((f32::from(size.height) / 1.4) as u32, max_limit);
+          let small_search_limit = min((f32::from(size.height) / 2.85) as u32, max_limit / 2);
+
+          app.dispatch(IoEvent::UpdateSearchLimits(
+            large_search_limit,
+            small_search_limit,
+          ));
+
+          if app.size.height > 8 {
+            app.help_menu_max_lines = (app.size.height as u32) - 8;
+          } else {
+            app.help_menu_max_lines = 0;
+          }
         }
+      };
+
+      let current_route = app.get_current_route();
+      terminal.draw(|f| match current_route.active_block {
+        ActiveBlock::HelpMenu => ui::draw_help_menu(f, &app),
+        ActiveBlock::Error => ui::draw_error_screen(f, &app),
+        ActiveBlock::SelectDevice => ui::draw_device_list(f, &app),
+        ActiveBlock::Analysis => ui::audio_analysis::draw(f, &app),
+        ActiveBlock::BasicView => ui::draw_basic_view(f, &app),
+        ActiveBlock::UpdatePrompt => ui::draw_update_prompt(f, &app),
+        ActiveBlock::Settings => ui::settings::draw_settings(f, &app),
+        _ => ui::draw_main_layout(f, &app),
+      })?;
+
+      if current_route.active_block == ActiveBlock::Input {
+        terminal.show_cursor()?;
+      } else {
+        terminal.hide_cursor()?;
       }
-    };
 
-    let current_route = app.get_current_route();
-    terminal.draw(|f| match current_route.active_block {
-      ActiveBlock::HelpMenu => ui::draw_help_menu(f, &app),
-      ActiveBlock::Error => ui::draw_error_screen(f, &app),
-      ActiveBlock::SelectDevice => ui::draw_device_list(f, &app),
-      ActiveBlock::Analysis => ui::audio_analysis::draw(f, &app),
-      ActiveBlock::BasicView => ui::draw_basic_view(f, &app),
-      ActiveBlock::UpdatePrompt => ui::draw_update_prompt(f, &app),
-      ActiveBlock::Settings => ui::settings::draw_settings(f, &app),
-      _ => ui::draw_main_layout(f, &app),
-    })?;
+      let cursor_offset = if app.size.height > ui::util::SMALL_TERMINAL_HEIGHT {
+        2
+      } else {
+        1
+      };
+      terminal.backend_mut().execute(MoveTo(
+        cursor_offset + app.input_cursor_position,
+        cursor_offset,
+      ))?;
 
-    if current_route.active_block == ActiveBlock::Input {
-      terminal.show_cursor()?;
-    } else {
-      terminal.hide_cursor()?;
-    }
-
-    let cursor_offset = if app.size.height > ui::util::SMALL_TERMINAL_HEIGHT {
-      2
-    } else {
-      1
-    };
-    terminal.backend_mut().execute(MoveTo(
-      cursor_offset + app.input_cursor_position,
-      cursor_offset,
-    ))?;
-
-    if SystemTime::now() > app.spotify_token_expiry {
-      app.dispatch(IoEvent::RefreshAuthentication);
+      if SystemTime::now() > app.spotify_token_expiry {
+        app.dispatch(IoEvent::RefreshAuthentication);
+      }
     }
 
     match events.next()? {
       event::Event::Input(key) => {
+        let mut app = app.lock().await;
         if key == Key::Ctrl('c') {
           app.close_io_channel();
           break;
@@ -1445,6 +1490,7 @@ async fn start_ui(
         }
       }
       event::Event::Tick => {
+        let mut app = app.lock().await;
         app.update_on_tick();
 
         #[cfg(feature = "streaming")]
@@ -1458,6 +1504,7 @@ async fn start_ui(
     }
 
     if is_first_render {
+      let mut app = app.lock().await;
       app.dispatch(IoEvent::GetPlaylists);
       app.dispatch(IoEvent::GetUser);
       app.dispatch(IoEvent::GetCurrentPlayback);

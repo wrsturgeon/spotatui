@@ -419,8 +419,10 @@ impl Network {
       }
     };
 
-    let mut app = self.app.lock().await;
-    app.is_loading = false;
+    {
+      let mut app = self.app.lock().await;
+      app.is_loading = false;
+    }
   }
 
   async fn handle_error(&mut self, e: anyhow::Error) {
@@ -1271,15 +1273,18 @@ impl Network {
         .await
       {
         Ok(saved_tracks) => {
-          let mut app = app.lock().await;
-          // Add liked song IDs to the set
-          saved_tracks.items.iter().for_each(|item| {
-            if let Some(track_id) = &item.track.id {
-              app.liked_song_ids_set.insert(track_id.to_string());
-            }
-          });
-          // Add page to the saved tracks
-          app.library.saved_tracks.pages.push(saved_tracks);
+          {
+            let mut app = app.lock().await;
+            // Add liked song IDs to the set
+            saved_tracks.items.iter().for_each(|item| {
+              if let Some(track_id) = &item.track.id {
+                app.liked_song_ids_set.insert(track_id.to_string());
+              }
+            });
+            // Add page to the saved tracks
+            app.library.saved_tracks.pages.push(saved_tracks);
+          }
+          tokio::task::yield_now().await;
         }
         Err(_e) => {
           // Silently fail in background task - don't show errors to user
@@ -1330,16 +1335,17 @@ impl Network {
         .await
       {
         Ok(playlist_page) => {
-          // Store the fetched tracks
-          let mut app = app.lock().await;
-          // Extend playlist tracks items
-          if let Some(ref mut existing) = app.playlist_tracks {
-            existing.items.extend(playlist_page.items);
-            existing.total = playlist_page.total; // Update total in case it changed
+          {
+            let mut app = app.lock().await;
+            // Extend playlist tracks items
+            if let Some(ref mut existing) = app.playlist_tracks {
+              existing.items.extend(playlist_page.items);
+              existing.total = playlist_page.total; // Update total in case it changed
+            }
           }
+          tokio::task::yield_now().await;
         }
         Err(_e) => {
-          // Silently fail in background task - don't show errors to user
           break;
         }
       }
