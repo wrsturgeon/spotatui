@@ -55,6 +55,7 @@ use crossterm::{
   cursor::MoveTo,
   event::{DisableMouseCapture, EnableMouseCapture},
   execute,
+  style::Print,
   terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
   },
@@ -74,7 +75,7 @@ use std::{
   cmp::{max, min},
   fs,
   io::{self, stdout},
-  panic,
+  panic::{self, PanicHookInfo},
   path::PathBuf,
   sync::{
     atomic::{AtomicU64, Ordering},
@@ -145,25 +146,41 @@ fn init_audio_backend() {
 #[cfg(not(all(target_os = "linux", feature = "streaming")))]
 fn init_audio_backend() {}
 
-fn install_panic_hook() {
-  let default_hook = panic::take_hook();
-  panic::set_hook(Box::new(move |info| {
-    let _ = disable_raw_mode();
-    let mut stdout = io::stdout();
-    let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
-    default_hook(info);
+fn panic_hook(info: &PanicHookInfo<'_>) {
+  if cfg!(debug_assertions) {
+    let location = info.location().unwrap();
 
-    if cfg!(debug_assertions) && std::env::var_os("RUST_BACKTRACE").is_none() {
-      eprintln!("{:?}", Backtrace::new());
-    }
-  }));
+    let msg = match info.payload().downcast_ref::<&'static str>() {
+      Some(s) => *s,
+      None => match info.payload().downcast_ref::<String>() {
+        Some(s) => &s[..],
+        None => "Box<Any>",
+      },
+    };
+
+    let stacktrace: String = format!("{:?}", Backtrace::new()).replace('\n', "\n\r");
+
+    disable_raw_mode().unwrap();
+    execute!(
+      io::stdout(),
+      LeaveAlternateScreen,
+      Print(format!(
+        "thread '<unnamed>' panicked at '{}', {}\n\r{}",
+        msg, location, stacktrace
+      )),
+      DisableMouseCapture
+    )
+    .unwrap();
+  }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
   init_audio_backend();
 
-  install_panic_hook();
+  panic::set_hook(Box::new(|info| {
+    panic_hook(info);
+  }));
 
   let mut clap_app = ClapApp::new(env!("CARGO_PKG_NAME"))
     .version(env!("CARGO_PKG_VERSION"))
@@ -471,27 +488,19 @@ of the app. Beware that this comes at a CPU cost!",
         initial_volume: user_config.behavior.volume_percent,
       };
 
-      let client_id = client_config.client_id.clone();
       let redirect_uri = client_config.get_redirect_uri();
 
-      let init_handle = tokio::spawn(async move {
-        player::StreamingPlayer::new(&client_id, &redirect_uri, streaming_config).await
-      });
-
-      match init_handle.await {
-        Ok(Ok(p)) => {
+      match player::StreamingPlayer::new(&client_config.client_id, &redirect_uri, streaming_config)
+        .await
+      {
+        Ok(p) => {
           println!("Streaming player initialized as '{}'", p.device_name());
           // Note: We don't activate() here - that's handled by AutoSelectStreamingDevice
           // which respects the user's saved device preference (e.g., spotifyd)
           Some(Arc::new(p))
         }
-        Ok(Err(e)) => {
-          println!("Failed to initialize streaming: {}", e);
-          println!("Falling back to API-based playback control");
-          None
-        }
         Err(e) => {
-          println!("Streaming initialization panicked: {}", e);
+          println!("Failed to initialize streaming: {}", e);
           println!("Falling back to API-based playback control");
           None
         }
