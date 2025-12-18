@@ -31,7 +31,7 @@ use std::{
 use arboard::Clipboard;
 
 pub const LIBRARY_OPTIONS: [&str; 6] = [
-  "Made For You",
+  "Discover",
   "Recently Played",
   "Liked Songs",
   "Albums",
@@ -84,7 +84,6 @@ pub struct SpotifyResultAndSelectedIndex<T> {
 pub struct Library {
   pub selected_index: usize,
   pub saved_tracks: ScrollableResultPages<Page<SavedTrack>>,
-  pub made_for_you_playlists: ScrollableResultPages<Page<SimplifiedPlaylist>>,
   pub saved_albums: ScrollableResultPages<Page<SavedAlbum>>,
   pub saved_shows: ScrollableResultPages<Page<Show>>,
   pub saved_artists: ScrollableResultPages<CursorBasedPage<FullArtist>>,
@@ -135,7 +134,7 @@ pub enum ActiveBlock {
   SearchResultBlock,
   SelectDevice,
   TrackTable,
-  MadeForYou,
+  Discover,
   Artists,
   BasicView,
   Dialog(DialogContext),
@@ -156,7 +155,7 @@ pub enum RouteId {
   Search,
   SelectedDevice,
   TrackTable,
-  MadeForYou,
+  Discover,
   Artists,
   Podcasts,
   PodcastEpisodes,
@@ -181,7 +180,7 @@ pub enum TrackTableContext {
   PlaylistSearch,
   SavedTracks,
   RecommendedTracks,
-  MadeForYou,
+  DiscoverPlaylist,
 }
 
 // Is it possible to compose enums?
@@ -195,6 +194,44 @@ pub enum AlbumTableContext {
 pub enum EpisodeTableContext {
   Simplified,
   Full,
+}
+
+/// Time range for Top Tracks/Artists in Discover feature
+#[derive(Clone, PartialEq, Debug, Copy, Default)]
+pub enum DiscoverTimeRange {
+  /// Last 4 weeks
+  ShortTerm,
+  /// Last 6 months (default)
+  #[default]
+  MediumTerm,
+  /// All time
+  LongTerm,
+}
+
+impl DiscoverTimeRange {
+  pub fn label(&self) -> &'static str {
+    match self {
+      DiscoverTimeRange::ShortTerm => "4 weeks",
+      DiscoverTimeRange::MediumTerm => "6 months",
+      DiscoverTimeRange::LongTerm => "All time",
+    }
+  }
+
+  pub fn next(&self) -> Self {
+    match self {
+      DiscoverTimeRange::ShortTerm => DiscoverTimeRange::MediumTerm,
+      DiscoverTimeRange::MediumTerm => DiscoverTimeRange::LongTerm,
+      DiscoverTimeRange::LongTerm => DiscoverTimeRange::ShortTerm,
+    }
+  }
+
+  pub fn prev(&self) -> Self {
+    match self {
+      DiscoverTimeRange::ShortTerm => DiscoverTimeRange::LongTerm,
+      DiscoverTimeRange::MediumTerm => DiscoverTimeRange::ShortTerm,
+      DiscoverTimeRange::LongTerm => DiscoverTimeRange::MediumTerm,
+    }
+  }
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -398,9 +435,7 @@ pub struct App {
   pub large_search_limit: u32,
   pub library: Library,
   pub playlist_offset: u32,
-  pub made_for_you_offset: u32,
   pub playlist_tracks: Option<Page<PlaylistItem>>,
-  pub made_for_you_tracks: Option<Page<PlaylistItem>>,
   pub playlists: Option<Page<SimplifiedPlaylist>>,
   pub recently_played: SpotifyResultAndSelectedIndex<Option<CursorBasedPage<PlayHistory>>>,
   pub recommended_tracks: Vec<FullTrack>,
@@ -423,7 +458,6 @@ pub struct App {
   pub selected_show_full: Option<SelectedFullShow>,
   pub user: Option<PrivateUser>,
   pub album_list_index: usize,
-  pub made_for_you_index: usize,
   pub artists_list_index: usize,
   pub clipboard: Option<Clipboard>,
   pub shows_list_index: usize,
@@ -459,6 +493,16 @@ pub struct App {
   /// Native playback state - updated by player events, used when streaming is active
   /// This is more reliable than current_playback_context.is_playing during native streaming
   pub native_is_playing: Option<bool>,
+  /// Selected index in the Discover view
+  pub discover_selected_index: usize,
+  /// Top tracks from the user for Discover feature
+  pub discover_top_tracks: Vec<FullTrack>,
+  /// Top Artists Mix tracks for Discover feature
+  pub discover_artists_mix: Vec<FullTrack>,
+  /// Time range for Top Tracks
+  pub discover_time_range: DiscoverTimeRange,
+  /// Whether we're currently loading discover data
+  pub discover_loading: bool,
 }
 
 impl Default for App {
@@ -468,7 +512,11 @@ impl Default for App {
       audio_capture_active: false,
       album_table_context: AlbumTableContext::Full,
       album_list_index: 0,
-      made_for_you_index: 0,
+      discover_selected_index: 0,
+      discover_top_tracks: vec![],
+      discover_artists_mix: vec![],
+      discover_time_range: DiscoverTimeRange::default(),
+      discover_loading: false,
       artists_list_index: 0,
       shows_list_index: 0,
       episode_list_index: 0,
@@ -483,7 +531,6 @@ impl Default for App {
       home_scroll: 0,
       library: Library {
         saved_tracks: ScrollableResultPages::new(),
-        made_for_you_playlists: ScrollableResultPages::new(),
         saved_albums: ScrollableResultPages::new(),
         saved_shows: ScrollableResultPages::new(),
         saved_artists: ScrollableResultPages::new(),
@@ -505,9 +552,7 @@ impl Default for App {
       input_idx: 0,
       input_cursor_position: 0,
       playlist_offset: 0,
-      made_for_you_offset: 0,
       playlist_tracks: None,
-      made_for_you_tracks: None,
       playlists: None,
       recommended_tracks: vec![],
       recommendations_context: None,
@@ -1345,33 +1390,6 @@ impl App {
       },
       _ => (),
     }
-  }
-
-  pub fn get_made_for_you(&mut self) {
-    // TODO: replace searches when relevant endpoint is added
-    const DISCOVER_WEEKLY: &str = "Discover Weekly";
-    const RELEASE_RADAR: &str = "Release Radar";
-    const ON_REPEAT: &str = "On Repeat";
-    const REPEAT_REWIND: &str = "Repeat Rewind";
-    const DAILY_DRIVE: &str = "Daily Drive";
-
-    if self.library.made_for_you_playlists.pages.is_empty() {
-      // We shouldn't be fetching all the results immediately - only load the data when the
-      // user selects the playlist
-      self.made_for_you_search_and_add(DISCOVER_WEEKLY);
-      self.made_for_you_search_and_add(RELEASE_RADAR);
-      self.made_for_you_search_and_add(ON_REPEAT);
-      self.made_for_you_search_and_add(REPEAT_REWIND);
-      self.made_for_you_search_and_add(DAILY_DRIVE);
-    }
-  }
-
-  fn made_for_you_search_and_add(&mut self, search_string: &str) {
-    let user_country = self.get_user_country();
-    self.dispatch(IoEvent::MadeForYouSearchAndAdd(
-      search_string.to_string(),
-      user_country,
-    ));
   }
 
   /// Toggle the audio analysis visualization view
