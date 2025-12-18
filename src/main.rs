@@ -87,7 +87,7 @@ use std::{
 use tokio::sync::Mutex;
 use user_config::{UserConfig, UserConfigPaths};
 
-const SCOPES: [&str; 15] = [
+const SCOPES: [&str; 16] = [
   "playlist-read-collaborative",
   "playlist-read-private",
   "playlist-modify-private",
@@ -102,7 +102,8 @@ const SCOPES: [&str; 15] = [
   "user-read-playback-position",
   "user-read-private",
   "user-read-recently-played",
-  "streaming", // Required for native playback
+  "user-top-read", // Required for Top Tracks/Artists in Discover
+  "streaming",     // Required for native playback
 ];
 
 // Manual token cache helpers since rspotify's built-in caching isn't working
