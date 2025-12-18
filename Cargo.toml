@@ -49,6 +49,7 @@ librespot-core = { version = "0.8", optional = true }
 librespot-connect = { version = "0.8", optional = true }
 librespot-oauth = { version = "0.8", optional = true }
 librespot-metadata = { version = "0.8", optional = true }
+futures = "0.3.31"
 
 [target.'cfg(all(target_os = "linux", not(target_env = "musl")))'.dependencies]
 pipewire = { version = "0.9", optional = true }

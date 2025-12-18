@@ -4399,6 +4399,7 @@ dependencies = [
  "cpal 0.15.3",
  "crossterm",
  "dirs",
+ "futures",
  "librespot-connect",
  "librespot-core",
  "librespot-metadata",
