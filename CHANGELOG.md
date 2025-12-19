@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.34.5] - 2025-12-18
+## [0.34.5] - 2025-12-19
 
 ### Added
 
@@ -12,12 +12,16 @@
   - Creates a unique mix every time you load it
 - **Loading Indicators**: Shows "Loading..." while fetching Discover playlists
 - **Track Counts**: Displays number of tracks loaded in the Discover menu
+- **Gruvbox Light Theme**: Added a new warm light theme preset for better readability in bright environments
 
 ### Fixed
 
 - **Made for You API Error**: Silenced JSON parsing error caused by Spotify's November 2024 API changes that restrict access to algorithmic playlists for apps without extended mode access
   - Previously showed cryptic `json parse error: invalid type: null, expected struct SimplifiedPlaylist` error
   - Now gracefully handles the API restriction without showing an error
+- **Theme Background Colors**: Added full support for theme background colors
+  - Fixed issue where light themes appeared dark due to terminal background fallback
+  - UI widgets now strictly respect the theme's background set in `config.yml`
 
 ### Changed
 
