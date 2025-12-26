@@ -208,6 +208,9 @@ pub fn draw_main_layout(f: &mut Frame<'_>, app: &App) {
 
   // Possibly draw confirm dialog
   draw_dialog(f, app);
+
+  // Possibly draw sort menu
+  draw_sort_menu(f, app);
 }
 
 pub fn draw_routes(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
@@ -2241,4 +2244,94 @@ pub fn draw_update_prompt(f: &mut Frame<'_>, app: &App) {
 
     f.render_widget(paragraph, rect);
   }
+}
+
+/// Draw the sort menu popup overlay
+fn draw_sort_menu(f: &mut Frame<'_>, app: &App) {
+  if !app.sort_menu_visible {
+    return;
+  }
+
+  let context = match app.sort_context {
+    Some(ctx) => ctx,
+    None => return,
+  };
+
+  let available_fields = context.available_fields();
+  let current_sort = match context {
+    crate::sort::SortContext::PlaylistTracks => &app.playlist_sort,
+    crate::sort::SortContext::SavedAlbums => &app.album_sort,
+    crate::sort::SortContext::SavedArtists => &app.artist_sort,
+    crate::sort::SortContext::RecentlyPlayed => &app.playlist_sort,
+  };
+
+  let bounds = f.size();
+  let width = std::cmp::min(bounds.width.saturating_sub(4), 35);
+  let height = (available_fields.len() + 4) as u16; // +4 for borders/padding
+  let left = (bounds.width.saturating_sub(width)) / 2;
+  let top = (bounds.height.saturating_sub(height)) / 2;
+
+  let rect = Rect::new(left, top, width, height);
+  f.render_widget(Clear, rect);
+
+  // Build list items
+  let items: Vec<ListItem> = available_fields
+    .iter()
+    .enumerate()
+    .map(|(i, field)| {
+      let shortcut = field
+        .shortcut()
+        .map(|c| format!(" ({})", c))
+        .unwrap_or_default();
+      let indicator = if *field == current_sort.field {
+        format!(" {}", current_sort.order.indicator())
+      } else {
+        String::new()
+      };
+      let text = format!("{}{}{}", field.display_name(), shortcut, indicator);
+
+      let style = if i == app.sort_menu_selected {
+        Style::default()
+          .fg(app.user_config.theme.active)
+          .add_modifier(Modifier::BOLD)
+      } else if *field == current_sort.field {
+        Style::default().fg(app.user_config.theme.hovered)
+      } else {
+        Style::default().fg(app.user_config.theme.text)
+      };
+
+      ListItem::new(text).style(style)
+    })
+    .collect();
+
+  let title = match context {
+    crate::sort::SortContext::PlaylistTracks => "Sort Tracks",
+    crate::sort::SortContext::SavedAlbums => "Sort Albums",
+    crate::sort::SortContext::SavedArtists => "Sort Artists",
+    crate::sort::SortContext::RecentlyPlayed => "Sort",
+  };
+
+  let list = List::new(items)
+    .block(
+      Block::default()
+        .borders(Borders::ALL)
+        .style(app.user_config.theme.base_style())
+        .border_style(Style::default().fg(app.user_config.theme.active))
+        .title(Span::styled(
+          title,
+          Style::default()
+            .fg(app.user_config.theme.active)
+            .add_modifier(Modifier::BOLD),
+        )),
+    )
+    .highlight_style(
+      Style::default()
+        .fg(app.user_config.theme.active)
+        .add_modifier(Modifier::BOLD),
+    );
+
+  let mut state = ListState::default();
+  state.select(Some(app.sort_menu_selected));
+
+  f.render_stateful_widget(list, rect, &mut state);
 }
