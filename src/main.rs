@@ -64,16 +64,11 @@ use crossterm::{
   ExecutableCommand,
 };
 use network::{IoEvent, Network};
-#[cfg(not(all(feature = "mpris", target_os = "linux")))]
+#[cfg_attr(all(feature = "mpris", target_os = "linux"), allow(unused_imports))]
 use ratatui::{
   backend::{Backend, CrosstermBackend},
-  prelude::Style,
+  style::Style,
   widgets::Block,
-  Terminal,
-};
-#[cfg(all(feature = "mpris", target_os = "linux"))]
-use ratatui::{
-  backend::{Backend, CrosstermBackend},
   Terminal,
 };
 use redirect_uri::redirect_uri_web_server;
