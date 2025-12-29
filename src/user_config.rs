@@ -338,6 +338,54 @@ impl ThemePreset {
   }
 }
 
+/// Available audio visualizer styles
+#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
+pub enum VisualizerStyle {
+  /// Classic mode: Uses the built-in Ratatui BarChart with gradient colors
+  #[default]
+  Classic,
+  /// Equalizer mode: Uses tui-equalizer with half-block bars and brightness effect
+  Equalizer,
+  /// BarGraph mode: Uses tui-bar-graph with Braille patterns for high-resolution display
+  BarGraph,
+}
+
+impl VisualizerStyle {
+  pub fn all() -> &'static [VisualizerStyle] {
+    &[
+      VisualizerStyle::Classic,
+      VisualizerStyle::Equalizer,
+      VisualizerStyle::BarGraph,
+    ]
+  }
+
+  pub fn name(&self) -> &'static str {
+    match self {
+      VisualizerStyle::Classic => "Classic",
+      VisualizerStyle::Equalizer => "Equalizer",
+      VisualizerStyle::BarGraph => "Bar Graph",
+    }
+  }
+
+  pub fn next(&self) -> Self {
+    let styles = Self::all();
+    let current_idx = styles.iter().position(|s| s == self).unwrap_or(0);
+    let next_idx = (current_idx + 1) % styles.len();
+    styles[next_idx]
+  }
+
+  pub fn prev(&self) -> Self {
+    let styles = Self::all();
+    let current_idx = styles.iter().position(|s| s == self).unwrap_or(0);
+    let prev_idx = if current_idx == 0 {
+      styles.len() - 1
+    } else {
+      current_idx - 1
+    };
+    styles[prev_idx]
+  }
+}
+
 fn parse_key(key: String) -> Result<Key> {
   fn get_single_char(string: &str) -> char {
     match string.chars().next() {
@@ -489,6 +537,7 @@ pub struct BehaviorConfigString {
   pub playing_icon: Option<String>,
   pub paused_icon: Option<String>,
   pub set_window_title: Option<bool>,
+  pub visualizer_style: Option<VisualizerStyle>,
 }
 
 #[derive(Clone)]
@@ -509,6 +558,7 @@ pub struct BehaviorConfig {
   pub playing_icon: String,
   pub paused_icon: String,
   pub set_window_title: bool,
+  pub visualizer_style: VisualizerStyle,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -575,6 +625,7 @@ impl UserConfig {
         playing_icon: "▶".to_string(),
         paused_icon: "⏸".to_string(),
         set_window_title: true,
+        visualizer_style: VisualizerStyle::default(),
       },
       path_to_config: None,
     }
@@ -750,6 +801,10 @@ impl UserConfig {
       self.behavior.shuffle_enabled = shuffle_enabled;
     }
 
+    if let Some(visualizer_style) = behavior_config.visualizer_style {
+      self.behavior.visualizer_style = visualizer_style;
+    }
+
     Ok(())
   }
 
@@ -812,6 +867,7 @@ impl UserConfig {
       playing_icon: Some(self.behavior.playing_icon.clone()),
       paused_icon: Some(self.behavior.paused_icon.clone()),
       set_window_title: Some(self.behavior.set_window_title),
+      visualizer_style: Some(self.behavior.visualizer_style),
     };
 
     // Helper to build theme config from current values
