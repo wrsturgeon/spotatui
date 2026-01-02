@@ -17,15 +17,16 @@
 
 ![Song History](https://spotatui-counter.spotatui.workers.dev/chart.svg)
 
-<div align="center">
 
-### 📑 Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-- [🙏 Help Wanted](#-help-wanted)
-- [⚡ Performance](#-performance)
+## Table of Contents
+
+
+- [Help Wanted](#help-wanted)
+- [Performance](#performance)
 - [Privacy Notice](#privacy-notice)
 - [Migrating from spotify-tui](#migrating-from-spotify-tui)
 - [Installation](#installation)
@@ -47,21 +48,20 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-</div>
 
 
-## 🙏 Help Wanted
+## Help Wanted
 
 **spotatui is currently maintained by a solo developer.** More contributors would be hugely appreciated! Here's how you can help:
 
-- ⭐ **Star the repo** to help others discover the project
-- 🐛 **Report bugs** or request features in [Issues](https://github.com/LargeModGames/spotatui/issues)
-- 💬 **Join the community** in [Discussions](https://github.com/LargeModGames/spotatui/discussions)
-- 📖 **Submit a PR** for code, docs, or themes
+- **Star the repo** to help others discover the project
+- **Report bugs** or request features in [Issues](https://github.com/LargeModGames/spotatui/issues)
+- **Join the community** in [Discussions](https://github.com/LargeModGames/spotatui/discussions)
+- **Submit a PR** for code, docs, or themes
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more details!
 
-## ⚡ Performance
+## Performance
 
 spotatui is extremely lightweight compared to the official Electron client.
 
@@ -75,7 +75,7 @@ spotatui is extremely lightweight compared to the official Electron client.
 
 ## Privacy Notice
 
-**🔒 Anonymous Global Counter**: spotatui includes an opt-in feature that contributes to a global counter showing how many songs have been played by all users worldwide. This feature:
+**Anonymous Global Counter**: spotatui includes an opt-in feature that contributes to a global counter showing how many songs have been played by all users worldwide. This feature:
 
 - **Is completely anonymous** - no personal information, song names, artists, or listening history is collected
 - **Only sends a simple increment** when a new song starts playing
@@ -88,7 +88,7 @@ We respect your privacy. This is purely a fun community metric with zero trackin
 
 If you used the original `spotify-tui` before:
 
-- The binary name changed from `spt` → `spotatui`.
+- The binary name changed from `spt` to `spotatui`.
 - Config paths changed:
   - Old: `~/.config/spotify-tui/`
   - New: `~/.config/spotatui/`
@@ -114,7 +114,7 @@ yay -S spotatui
 
 Or download pre-built binaries from [GitHub Releases](https://github.com/LargeModGames/spotatui/releases/latest).
 
-📖 **See the [Installation Wiki](https://github.com/LargeModGames/spotatui/wiki/Installation) for platform-specific requirements and building from source.**
+See the [Installation Wiki](https://github.com/LargeModGames/spotatui/wiki/Installation) for platform-specific requirements and building from source.
 
 ## Connecting to Spotify
 
@@ -122,7 +122,7 @@ Run `spotatui` and follow the on-screen instructions to connect your Spotify acc
 
 You'll need to create a Spotify Developer app at the [Spotify Dashboard](https://developer.spotify.com/dashboard/applications).
 
-📖 **See the [Installation Wiki](https://github.com/LargeModGames/spotatui/wiki/Installation#connecting-to-spotify) for step-by-step setup.**
+See the [Installation Wiki](https://github.com/LargeModGames/spotatui/wiki/Installation#connecting-to-spotify) for step-by-step setup.
 
 ## Usage
 
@@ -131,7 +131,7 @@ The binary is named `spotatui`.
 Running `spotatui` with no arguments will bring up the UI. Press `?` to bring up a help menu that shows currently implemented key events and their actions.
 There is also a CLI that is able to do most of the stuff the UI does. Use `spotatui --help` to learn more.
 
-📖 **See [Keybindings Wiki](https://github.com/LargeModGames/spotatui/wiki/Keybindings) for the full list of keyboard shortcuts.**
+See [Keybindings Wiki](https://github.com/LargeModGames/spotatui/wiki/Keybindings) for the full list of keyboard shortcuts.
 
 Here are some example to get you excited.
 ```
@@ -156,17 +156,17 @@ spotatui can play audio directly without needing spotifyd or the official Spotif
 - Works with media keys, MPRIS (Linux), and macOS Now Playing
 - Premium account required
 
-📖 **See the [Native Streaming Wiki](https://github.com/LargeModGames/spotatui/wiki/Native-Streaming) for setup details.**
+See the [Native Streaming Wiki](https://github.com/LargeModGames/spotatui/wiki/Native-Streaming) for setup details.
 
 ## Configuration
 
 A configuration file is located at `${HOME}/.config/spotatui/config.yml`.
 
-📖 **See the [Configuration Wiki](https://github.com/LargeModGames/spotatui/wiki/Configuration) for the full config file reference.**
+See the [Configuration Wiki](https://github.com/LargeModGames/spotatui/wiki/Configuration) for the full config file reference.
 
 You can also configure spotatui in-app by pressing `Alt-,` to open Settings.
 
-📖 **See [Themes Wiki](https://github.com/LargeModGames/spotatui/wiki/Themes) for built-in presets (Spotify, Dracula, Nord, etc.).**
+See [Themes Wiki](https://github.com/LargeModGames/spotatui/wiki/Themes) for built-in presets (Spotify, Dracula, Nord, etc.).
 
 ## Limitations
 
@@ -187,13 +187,13 @@ If you want to play tracks, Spotify requires that you have a Premium account.
   **Platform Support:**
   | Platform    | Status                 | Notes                                    |
   | ----------- | ---------------------- | ---------------------------------------- |
-  | **Windows** | ✅ Works out of the box | Uses WASAPI loopback                     |
-  | **Linux**   | ✅ Works out of the box | Uses PipeWire/PulseAudio monitor devices |
-  | **macOS**   | ⚠️ Requires setup       | Needs a virtual audio device (see below) |
+  | **Windows** | Works out of the box | Uses WASAPI loopback                     |
+  | **Linux**   | Works out of the box | Uses PipeWire/PulseAudio monitor devices |
+  | **macOS**   | Requires setup      | Needs a virtual audio device (see below) |
 
   > **macOS Users:** macOS doesn't natively expose system audio loopback. To use audio visualization, install a virtual audio device like [BlackHole](https://github.com/ExistentialAudio/BlackHole) (free) or [Loopback](https://rogueamoeba.com/loopback/) (paid). Configure it to capture system audio and set it as your default input device.
 
-  > **Note:** The audio visualization is **system-wide** – it captures all audio playing on your system, not just Spotify. This means it will also react to YouTube videos, games, or any other audio source!
+  > **Note:** The audio visualization is **system-wide** - it captures all audio playing on your system, not just Spotify. This means it will also react to YouTube videos, games, or any other audio source!
 - **Related Artists**: When viewing an artist page, the "Related Artists" section shows similar artists based on Spotify's recommendation algorithm. This feature **only works if your Spotify Developer application was created before November 27, 2024**.
 
 For more information, see [Spotify's announcement about API changes](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api).
@@ -424,4 +424,4 @@ The goal is to eventually implement almost every Spotify feature.
 - Add songs to a playlist
 - Scroll through result pages in every view
 
-📖 **See the [Roadmap Wiki](https://github.com/LargeModGames/spotatui/wiki/Roadmap) for the full API coverage table.**
+See the [Roadmap Wiki](https://github.com/LargeModGames/spotatui/wiki/Roadmap) for the full API coverage table.
