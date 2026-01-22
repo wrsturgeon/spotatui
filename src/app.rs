@@ -321,7 +321,7 @@ pub enum LyricsStatus {
 #[derive(Clone, Debug, Default)]
 pub struct NativeTrackInfo {
   pub name: String,
-  pub artists: Vec<String>,
+  pub artists_display: String,
   #[allow(dead_code)]
   pub album: String, // Reserved for future use (e.g., displaying album in playbar)
   pub duration_ms: u32,
@@ -495,6 +495,10 @@ pub struct App {
   /// Native playback state - updated by player events, used when streaming is active
   /// This is more reliable than current_playback_context.is_playing during native streaming
   pub native_is_playing: Option<bool>,
+  /// Timestamp of the last native device activation
+  pub last_device_activation: Option<Instant>,
+  /// Whether a native device activation is still in progress
+  pub native_activation_pending: bool,
   /// Selected index in the Discover view
   pub discover_selected_index: usize,
   /// Top tracks from the user for Discover feature
@@ -518,6 +522,10 @@ pub struct App {
   pub artist_sort: SortState,
   /// Animation frame counter for the "Liked" heart flash effect (0-10)
   pub liked_song_animation_frame: Option<u8>,
+  /// Ephemeral status message shown in the playbar
+  pub status_message: Option<String>,
+  /// When to clear the status message
+  pub status_message_expires_at: Option<Instant>,
 }
 
 impl Default for App {
@@ -624,6 +632,8 @@ impl Default for App {
       is_streaming_active: false,
       native_device_id: None,
       native_is_playing: None,
+      last_device_activation: None,
+      native_activation_pending: false,
       // Sort menu defaults
       sort_menu_visible: false,
       sort_menu_selected: 0,
@@ -632,6 +642,8 @@ impl Default for App {
       album_sort: SortState::new(),
       artist_sort: SortState::new(),
       liked_song_animation_frame: None,
+      status_message: None,
+      status_message_expires_at: None,
     }
   }
 }
@@ -714,6 +726,13 @@ impl App {
   }
 
   pub fn update_on_tick(&mut self) {
+    if let Some(expires_at) = self.status_message_expires_at {
+      if Instant::now() >= expires_at {
+        self.status_message = None;
+        self.status_message_expires_at = None;
+      }
+    }
+
     if let Some(frame) = self.liked_song_animation_frame {
       if frame > 0 {
         self.liked_song_animation_frame = Some(frame - 1);

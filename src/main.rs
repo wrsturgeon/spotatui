@@ -77,7 +77,7 @@ use std::{
     atomic::{AtomicU64, Ordering},
     Arc,
   },
-  time::SystemTime,
+  time::{Duration, Instant, SystemTime},
 };
 use tokio::sync::Mutex;
 use user_config::{UserConfig, UserConfigPaths};
@@ -689,16 +689,62 @@ of the app. Beware that this comes at a CPU cost!",
       #[cfg(not(feature = "streaming"))]
       let mut network = Network::new(spotify, client_config, &app);
 
-      // Auto-select the streaming device as active playback device
-      // BUT only if user hasn't previously selected a different device (respect saved device_id)
+      // Auto-select the saved playback device when available (fallback to native streaming).
       #[cfg(feature = "streaming")]
       if let Some(device_name) = streaming_device_name {
-        // Only auto-select native streaming if no device_id is saved
-        // This preserves user's previous device choice (e.g., spotifyd)
-        if network.client_config.device_id.is_none() {
-          network
-            .handle_network_event(IoEvent::AutoSelectStreamingDevice(device_name))
-            .await;
+        let saved_device_id = network.client_config.device_id.clone();
+        let mut devices_snapshot = None;
+
+        if let Ok(devices_vec) = network.spotify.device().await {
+          let mut app = network.app.lock().await;
+          app.devices = Some(rspotify::model::device::DevicePayload {
+            devices: devices_vec.clone(),
+          });
+          devices_snapshot = Some(devices_vec);
+        }
+
+        let mut status_message = None;
+        let startup_event = match saved_device_id {
+          Some(saved_device_id) => {
+            if let Some(devices_vec) = devices_snapshot.as_ref() {
+              if devices_vec
+                .iter()
+                .any(|device| device.id.as_ref() == Some(&saved_device_id))
+              {
+                Some(IoEvent::TransferPlaybackToDevice(saved_device_id, true))
+              } else {
+                status_message = Some(format!("Saved device unavailable; using {}", device_name));
+                let native_device_id = devices_vec
+                  .iter()
+                  .find(|device| device.name.eq_ignore_ascii_case(&device_name))
+                  .and_then(|device| device.id.clone());
+                if let Some(native_device_id) = native_device_id {
+                  Some(IoEvent::TransferPlaybackToDevice(native_device_id, false))
+                } else {
+                  Some(IoEvent::AutoSelectStreamingDevice(
+                    device_name.clone(),
+                    false,
+                  ))
+                }
+              }
+            } else {
+              Some(IoEvent::TransferPlaybackToDevice(saved_device_id, true))
+            }
+          }
+          None => Some(IoEvent::AutoSelectStreamingDevice(
+            device_name.clone(),
+            true,
+          )),
+        };
+
+        if let Some(message) = status_message {
+          let mut app = network.app.lock().await;
+          app.status_message = Some(message);
+          app.status_message_expires_at = Some(Instant::now() + Duration::from_secs(5));
+        }
+
+        if let Some(event) = startup_event {
+          network.handle_network_event(event).await;
         }
       }
 
@@ -872,7 +918,7 @@ async fn handle_player_events(
           // Store immediate track info for instant UI display
           app.native_track_info = Some(app::NativeTrackInfo {
             name: audio_item.name.clone(),
-            artists: artists.clone(),
+            artists_display: artists.join(", "),
             album: album.clone(),
             duration_ms: audio_item.duration_ms,
           });
@@ -1056,7 +1102,7 @@ async fn handle_player_events(
           };
           app.native_track_info = Some(app::NativeTrackInfo {
             name: audio_item.name.clone(),
-            artists,
+            artists_display: artists.join(", "),
             album,
             duration_ms: audio_item.duration_ms,
           });
@@ -1270,6 +1316,7 @@ async fn start_ui(
   let mut is_first_render = true;
 
   loop {
+    let terminal_size = terminal.backend().size().ok();
     {
       let mut app = app.lock().await;
 
@@ -1289,7 +1336,7 @@ async fn start_ui(
       }
 
       // Get the size of the screen on each loop to account for resize event
-      if let Ok(size) = terminal.backend().size() {
+      if let Some(size) = terminal_size {
         // Reset the help menu is the terminal was resized
         if is_first_render || app.size != size {
           app.help_menu_max_lines = 0;
@@ -1509,10 +1556,11 @@ async fn start_ui(
   let mut is_first_render = true;
 
   loop {
+    let terminal_size = terminal.backend().size().ok();
     {
       let mut app = app.lock().await;
 
-      if let Ok(size) = terminal.backend().size() {
+      if let Some(size) = terminal_size {
         if is_first_render || app.size != size {
           app.help_menu_max_lines = 0;
           app.help_menu_offset = 0;

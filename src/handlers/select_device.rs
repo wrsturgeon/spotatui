@@ -57,7 +57,7 @@ pub fn handler(key: Key, app: &mut App) {
         if let Some(devices) = &app.devices {
           if let Some(device) = devices.devices.get(index) {
             if let Some(device_id) = &device.id {
-              app.dispatch(IoEvent::TransferPlaybackToDevice(device_id.clone()));
+              app.dispatch(IoEvent::TransferPlaybackToDevice(device_id.clone(), true));
             }
           }
         }

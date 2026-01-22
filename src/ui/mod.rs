@@ -25,6 +25,8 @@ use rspotify::model::enums::RepeatState;
 use rspotify::model::show::ResumePoint;
 use rspotify::model::PlayableItem;
 use rspotify::prelude::Id;
+use std::sync::{Mutex, OnceLock};
+use unicode_width::UnicodeWidthStr;
 use util::{
   create_artist_string, display_track_progress, get_artist_highlight_state, get_color,
   get_percentage_width, get_search_results_highlight_state, get_track_progress_percentage,
@@ -71,6 +73,40 @@ pub struct TableItem {
   id: String,
   format: Vec<String>,
 }
+
+#[derive(Clone, PartialEq)]
+struct HomeThemeKey {
+  banner: Color,
+  active: Color,
+  hovered: Color,
+  text: Color,
+  hint: Color,
+  inactive: Color,
+  changelog_width: u16,
+}
+
+impl HomeThemeKey {
+  fn from_theme(theme: &crate::user_config::Theme, changelog_width: u16) -> Self {
+    Self {
+      banner: theme.banner,
+      active: theme.active,
+      hovered: theme.hovered,
+      text: theme.text,
+      hint: theme.hint,
+      inactive: theme.inactive,
+      changelog_width,
+    }
+  }
+}
+
+struct HomeCache {
+  theme_key: HomeThemeKey,
+  gradient_lines: Vec<Line<'static>>,
+  changelog_lines: Vec<Line<'static>>,
+}
+
+static HOME_CACHE: OnceLock<Mutex<HomeCache>> = OnceLock::new();
+static CLEAN_CHANGELOG: OnceLock<String> = OnceLock::new();
 
 pub fn draw_help_menu(f: &mut Frame<'_>, app: &App) {
   let [area] = f
@@ -1016,6 +1052,8 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
     .margin(1),
   );
 
+  let mut drew_playbar = false;
+
   // If no track is playing, render paragraph showing which device is selected, if no selected
   // give hint to choose a device
   if let Some(current_playback_context) = &app.current_playback_context {
@@ -1040,7 +1078,7 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         RepeatState::Context => "All",
       };
 
-      let title = format!(
+      let mut title = format!(
         "{:-7} ({} | Shuffle: {:-3} | Repeat: {:-5} | Volume: {:-2}%)",
         play_title,
         current_playback_context.device.name,
@@ -1048,6 +1086,10 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         repeat_text,
         current_playback_context.device.volume_percent.unwrap_or(0)
       );
+
+      if let Some(message) = app.status_message.as_ref() {
+        title = format!("{} | {}", title, message);
+      }
 
       let current_route = app.get_current_route();
       let highlight_state = (
@@ -1090,7 +1132,7 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         if let Some(ref native_info) = app.native_track_info {
           (
             native_info.name.clone(),
-            native_info.artists.join(", "),
+            native_info.artists_display.clone(),
             native_info.duration_ms as u64,
           )
         } else {
@@ -1191,6 +1233,23 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
 
         f.render_widget(canvas, layout_chunk);
       }
+
+      drew_playbar = true;
+    }
+  }
+
+  if !drew_playbar {
+    if let Some(message) = app.status_message.as_ref() {
+      let title_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .style(Style::default().bg(app.user_config.theme.playbar_background))
+        .title(Span::styled(
+          format!("Status: {}", message),
+          Style::default().fg(app.user_config.theme.playbar_text),
+        ))
+        .border_style(Style::default().fg(app.user_config.theme.inactive));
+      f.render_widget(title_block, layout_chunk);
     }
   }
 }
@@ -1275,17 +1334,86 @@ fn draw_home(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
     .border_style(get_color(highlight_state, app.user_config.theme));
   f.render_widget(welcome, layout_chunk);
 
-  let changelog = include_str!("../../CHANGELOG.md").to_string();
+  let (gradient_lines, base_changelog_lines) =
+    get_home_cache(&app.user_config.theme, changelog_area.width);
 
-  // If debug mode show the "Unreleased" header. Otherwise it is a release so there should be no
-  // unreleased features
-  let clean_changelog = if cfg!(debug_assertions) {
-    changelog
+  // Contains the banner
+  let top_text = Paragraph::new(Text::from(gradient_lines))
+    .style(app.user_config.theme.base_style())
+    .block(Block::default());
+  f.render_widget(top_text, banner_area);
+
+  // Prepend global counter status to the changelog view
+  let mut changelog_lines = Vec::with_capacity(base_changelog_lines.len() + 2);
+  let counter_message = if cfg!(feature = "telemetry") {
+    if app.user_config.behavior.enable_global_song_count {
+      match app.global_song_count {
+        Some(count) => format!("Global songs played with spotatui: {}", count),
+        None if app.global_song_count_failed => {
+          "Global song counter unavailable right now.".to_string()
+        }
+        None => "Loading global song count...".to_string(),
+      }
+    } else {
+      "Global song counter disabled (Settings -> Behavior).".to_string()
+    }
   } else {
-    changelog.replace("\n## [Unreleased]\n", "")
+    "Global song counter unavailable (telemetry disabled in this build).".to_string()
   };
 
-  // Helper to convert Ratatui Color to RGBA tuple
+  let counter_style = Style::default().fg(app.user_config.theme.hint);
+  changelog_lines.push(Line::from(vec![Span::styled(
+    counter_message,
+    counter_style,
+  )]));
+  changelog_lines.push(Line::from(""));
+  changelog_lines.extend(base_changelog_lines);
+
+  // CHANGELOG
+  let bottom_text = Paragraph::new(Text::from(changelog_lines))
+    .block(Block::default())
+    .style(app.user_config.theme.base_style())
+    .wrap(Wrap { trim: false })
+    .scroll((app.home_scroll, 0));
+  f.render_widget(bottom_text, changelog_area);
+}
+
+fn get_clean_changelog() -> &'static str {
+  CLEAN_CHANGELOG
+    .get_or_init(|| {
+      let changelog = include_str!("../../CHANGELOG.md");
+      if cfg!(debug_assertions) {
+        changelog.to_string()
+      } else {
+        changelog.replace("\n## [Unreleased]\n", "")
+      }
+    })
+    .as_str()
+}
+
+fn get_home_cache(
+  theme: &crate::user_config::Theme,
+  changelog_width: u16,
+) -> (Vec<Line<'static>>, Vec<Line<'static>>) {
+  let cache = HOME_CACHE.get_or_init(|| Mutex::new(build_home_cache(theme, changelog_width)));
+  let mut cache = cache.lock().expect("home cache lock failed");
+  let theme_key = HomeThemeKey::from_theme(theme, changelog_width);
+  if cache.theme_key != theme_key {
+    *cache = build_home_cache(theme, changelog_width);
+  }
+  (cache.gradient_lines.clone(), cache.changelog_lines.clone())
+}
+
+fn build_home_cache(theme: &crate::user_config::Theme, changelog_width: u16) -> HomeCache {
+  let changelog = get_clean_changelog();
+  HomeCache {
+    theme_key: HomeThemeKey::from_theme(theme, changelog_width),
+    gradient_lines: build_banner_gradient_lines(theme),
+    changelog_lines: build_changelog_lines(changelog, theme, changelog_width),
+  }
+}
+
+fn build_banner_gradient_lines(theme: &crate::user_config::Theme) -> Vec<Line<'static>> {
   fn to_rgba(color: ratatui::style::Color) -> (u8, u8, u8, u8) {
     match color {
       ratatui::style::Color::Rgb(r, g, b) => (r, g, b, 255),
@@ -1309,11 +1437,9 @@ fn draw_home(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
     }
   }
 
-  // Create dynamic gradient based on theme colors
-  // Flow: Banner Color -> Active Color -> Hovered Color
-  let c1 = to_rgba(app.user_config.theme.banner);
-  let c2 = to_rgba(app.user_config.theme.active);
-  let c3 = to_rgba(app.user_config.theme.hovered);
+  let c1 = to_rgba(theme.banner);
+  let c2 = to_rgba(theme.active);
+  let c3 = to_rgba(theme.hovered);
 
   let grad = colorgrad::GradientBuilder::new()
     .colors(&[
@@ -1322,13 +1448,12 @@ fn draw_home(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
       colorgrad::Color::from_rgba8(c3.0, c3.1, c3.2, c3.3),
     ])
     .build::<colorgrad::LinearGradient>()
-    .unwrap(); // Safe as we provide valid colors
+    .unwrap();
 
-  let gradient_lines: Vec<Line> = BANNER
+  BANNER
     .lines()
     .enumerate()
     .map(|(i, line)| {
-      // Scale t to cycle through gradient
       let t = (i as f64) / 8.0;
       let [r, g, b, _] = grad.at(t as f32).to_rgba8();
       Line::from(Span::styled(
@@ -1336,61 +1461,178 @@ fn draw_home(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         Style::default().fg(ratatui::style::Color::Rgb(r, g, b)),
       ))
     })
-    .collect();
-
-  // Contains the banner
-  let top_text = Paragraph::new(gradient_lines)
-    .style(app.user_config.theme.base_style())
-    .block(Block::default());
-  f.render_widget(top_text, banner_area);
-
-  // Parse changelog with styling
-  let changelog_lines = parse_changelog_with_style(&clean_changelog, &app.user_config.theme);
-
-  // Prepend global counter status to the changelog view
-  let mut changelog_lines = changelog_lines;
-  let counter_message = if cfg!(feature = "telemetry") {
-    if app.user_config.behavior.enable_global_song_count {
-      match app.global_song_count {
-        Some(count) => format!("Global songs played with spotatui: {}", count),
-        None if app.global_song_count_failed => {
-          "Global song counter unavailable right now.".to_string()
-        }
-        None => "Loading global song count...".to_string(),
-      }
-    } else {
-      "Global song counter disabled (Settings -> Behavior).".to_string()
-    }
-  } else {
-    "Global song counter unavailable (telemetry disabled in this build).".to_string()
-  };
-
-  let counter_style = Style::default().fg(app.user_config.theme.hint);
-  changelog_lines.lines.insert(
-    0,
-    Line::from(vec![Span::styled(counter_message, counter_style)]),
-  );
-  changelog_lines.lines.insert(1, Line::from(""));
-
-  // CHANGELOG
-  let bottom_text = Paragraph::new(changelog_lines)
-    .block(Block::default())
-    .style(app.user_config.theme.base_style())
-    .wrap(Wrap { trim: false })
-    .scroll((app.home_scroll, 0));
-  f.render_widget(bottom_text, changelog_area);
+    .collect()
 }
 
-/// Parse markdown changelog and apply terminal styling
-fn parse_changelog_with_style<'a>(
-  changelog: &'a str,
+#[derive(Clone)]
+struct StyledSegment {
+  text: String,
+  style: Style,
+}
+
+fn parse_markdown_inline(text: &str, base_style: Style) -> Vec<StyledSegment> {
+  let mut segments: Vec<StyledSegment> = Vec::new();
+  let mut buffer = String::new();
+  let mut chars = text.chars().peekable();
+  let mut is_bold = false;
+
+  while let Some(ch) = chars.next() {
+    if ch == '*' && chars.peek() == Some(&'*') {
+      if !buffer.is_empty() {
+        let style = if is_bold {
+          base_style.add_modifier(Modifier::BOLD)
+        } else {
+          base_style
+        };
+        segments.push(StyledSegment {
+          text: std::mem::take(&mut buffer),
+          style,
+        });
+      }
+      chars.next();
+      is_bold = !is_bold;
+    } else {
+      buffer.push(ch);
+    }
+  }
+
+  if !buffer.is_empty() {
+    let style = if is_bold {
+      base_style.add_modifier(Modifier::BOLD)
+    } else {
+      base_style
+    };
+    segments.push(StyledSegment {
+      text: buffer,
+      style,
+    });
+  }
+
+  segments
+}
+
+fn segments_to_spans(segments: Vec<StyledSegment>) -> Vec<Span<'static>> {
+  segments
+    .into_iter()
+    .map(|segment| Span::styled(segment.text, segment.style))
+    .collect()
+}
+
+fn split_segments_by_whitespace(segments: &[StyledSegment]) -> Vec<StyledSegment> {
+  let mut tokens = Vec::new();
+
+  for segment in segments {
+    let mut buffer = String::new();
+    let mut buffer_is_whitespace: Option<bool> = None;
+
+    for ch in segment.text.chars() {
+      let is_whitespace = ch.is_whitespace();
+      match buffer_is_whitespace {
+        Some(current_state) if current_state == is_whitespace => buffer.push(ch),
+        Some(_) => {
+          tokens.push(StyledSegment {
+            text: std::mem::take(&mut buffer),
+            style: segment.style,
+          });
+          buffer.push(ch);
+          buffer_is_whitespace = Some(is_whitespace);
+        }
+        None => {
+          buffer.push(ch);
+          buffer_is_whitespace = Some(is_whitespace);
+        }
+      }
+    }
+
+    if !buffer.is_empty() {
+      tokens.push(StyledSegment {
+        text: buffer,
+        style: segment.style,
+      });
+    }
+  }
+
+  tokens
+}
+
+fn wrap_segments_with_indent(
+  segments: &[StyledSegment],
+  max_width: usize,
+  prefix: &str,
+  prefix_style: Style,
+  indent: &str,
+  indent_style: Style,
+) -> Vec<Line<'static>> {
+  let prefix_width = UnicodeWidthStr::width(prefix);
+  let indent_width = UnicodeWidthStr::width(indent);
+  let mut lines: Vec<Line<'static>> = Vec::new();
+  let tokens = split_segments_by_whitespace(segments);
+  let mut current: Vec<StyledSegment> = Vec::new();
+  let mut current_width = 0;
+  let mut is_first_line = true;
+
+  for token in tokens {
+    let token_width = UnicodeWidthStr::width(token.text.as_str());
+    let is_whitespace = token.text.chars().all(char::is_whitespace);
+    let available_width = if is_first_line {
+      max_width.saturating_sub(prefix_width)
+    } else {
+      max_width.saturating_sub(indent_width)
+    };
+
+    if current_width == 0 && is_whitespace {
+      continue;
+    }
+
+    if current_width + token_width > available_width && current_width > 0 {
+      let prefix_to_use = if is_first_line { prefix } else { indent };
+      let style_to_use = if is_first_line {
+        prefix_style
+      } else {
+        indent_style
+      };
+      let mut spans = Vec::with_capacity(current.len() + 1);
+      spans.push(Span::styled(prefix_to_use.to_string(), style_to_use));
+      spans.extend(segments_to_spans(current));
+      lines.push(Line::from(spans));
+
+      current = Vec::new();
+      current_width = 0;
+      is_first_line = false;
+
+      if is_whitespace {
+        continue;
+      }
+    }
+
+    current_width += token_width;
+    current.push(token);
+  }
+
+  if !current.is_empty() || lines.is_empty() {
+    let prefix_to_use = if is_first_line { prefix } else { indent };
+    let style_to_use = if is_first_line {
+      prefix_style
+    } else {
+      indent_style
+    };
+    let mut spans = Vec::with_capacity(current.len() + 1);
+    spans.push(Span::styled(prefix_to_use.to_string(), style_to_use));
+    spans.extend(segments_to_spans(current));
+    lines.push(Line::from(spans));
+  }
+
+  lines
+}
+
+fn build_changelog_lines(
+  changelog: &str,
   theme: &crate::user_config::Theme,
-) -> Text<'a> {
-  use ratatui::style::Color;
+  max_width: u16,
+) -> Vec<Line<'static>> {
+  let mut lines: Vec<Line<'static>> = vec![];
+  let max_width = usize::from(max_width);
 
-  let mut lines: Vec<Line> = vec![];
-
-  // Add intro line
   lines.push(Line::from(Span::styled(
     "Please report any bugs or missing features to https://github.com/LargeModGames/spotatui",
     Style::default().fg(theme.hint),
@@ -1398,55 +1640,61 @@ fn parse_changelog_with_style<'a>(
   lines.push(Line::from(""));
 
   for line in changelog.lines() {
+    if line.starts_with("- ") {
+      let content = line.trim_start_matches("- ");
+      let segments = parse_markdown_inline(content, Style::default().fg(theme.text));
+      let bullet_prefix = "  • ";
+      let indent = " ".repeat(UnicodeWidthStr::width(bullet_prefix));
+      lines.extend(wrap_segments_with_indent(
+        &segments,
+        max_width,
+        bullet_prefix,
+        Style::default().fg(theme.inactive),
+        &indent,
+        Style::default().fg(theme.text),
+      ));
+      continue;
+    }
+
     let styled_line = if line.starts_with("# ") {
-      // Main title - bright and bold
       Line::from(Span::styled(
-        line.trim_start_matches("# "),
+        line.trim_start_matches("# ").to_string(),
         Style::default()
           .fg(theme.banner)
           .add_modifier(Modifier::BOLD),
       ))
     } else if line.starts_with("## [") {
-      // Version headers - highlighted
       Line::from(Span::styled(
         format!("═══ {} ═══", line.trim_start_matches("## ")),
         Style::default()
-          .fg(Color::Rgb(0, 180, 180)) // Cyan equivalent (RGB for cross-terminal compat)
+          .fg(theme.active)
           .add_modifier(Modifier::BOLD),
       ))
     } else if line.starts_with("### ") {
-      // Section headers (Added/Fixed/Changed)
-      // Use RGB colors for cross-terminal compatibility
       let section = line.trim_start_matches("### ");
       let color = match section {
-        "Added" => Color::Rgb(0, 180, 0),      // Green
-        "Fixed" => Color::Rgb(200, 200, 0),    // Yellow
-        "Changed" => Color::Rgb(80, 80, 200),  // Blue
-        "Removed" => Color::Rgb(200, 0, 0),    // Red
-        "Security" => Color::Rgb(180, 0, 180), // Magenta
-        _ => theme.text,
+        "Added" => theme.active,
+        "Fixed" => theme.hint,
+        "Changed" => theme.hovered,
+        "Removed" | "Security" => theme.error_text,
+        _ => theme.header,
       };
       Line::from(Span::styled(
         format!("  ┌─ {} ─┐", section),
         Style::default().fg(color).add_modifier(Modifier::BOLD),
       ))
-    } else if line.starts_with("- ") {
-      // Bullet points
-      let content = line.trim_start_matches("- ");
-      Line::from(vec![
-        Span::styled("  • ", Style::default().fg(theme.inactive)),
-        Span::styled(content, Style::default().fg(theme.text)),
-      ])
     } else if line.is_empty() {
       Line::from("")
     } else {
-      // Regular text
-      Line::from(Span::styled(line, Style::default().fg(theme.text)))
+      Line::from(segments_to_spans(parse_markdown_inline(
+        line,
+        Style::default().fg(theme.text),
+      )))
     };
     lines.push(styled_line);
   }
 
-  Text::from(lines)
+  lines
 }
 
 fn draw_artist_albums(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {

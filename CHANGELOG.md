@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.35.3] - 2026-01-22
+
+### Added
+
+- **Playbar Status Messages**: Added transient status messages in the playbar, used to notify when the saved playback device is unavailable and spotatui falls back to native streaming.
+
+### Fixed
+
+- **Startup Playback Device Selection**: Restored automatic selection of the last used playback device on startup, with graceful fallback to the native device when it is missing.
+- **Native Device Activation Latency**: Made Spotify Connect activation non-blocking and reduced delays during device selection/playback.
+
+### Changed
+
+- **Home Screen Rendering**: Cached the home banner gradient and changelog parsing to reduce per-frame work.
+- **Changelog Styling**: Changelog section headers now use theme colors for a softer, theme-consistent look.
+- **Native Track Metadata**: Store a preformatted artist display string for faster playbar updates.
+- **UI Render Loop**: Cache terminal size per tick to avoid repeated backend queries.
+
 ## [0.35.1] - 2026-01-07
 
 ### Fixed

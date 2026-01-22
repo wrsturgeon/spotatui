@@ -287,7 +287,7 @@ impl CliApp {
     } else {
       self
         .net
-        .handle_network_event(IoEvent::TransferPlaybackToDevice(id.to_string()))
+        .handle_network_event(IoEvent::TransferPlaybackToDevice(id.to_string(), true))
         .await;
       Ok(())
     }

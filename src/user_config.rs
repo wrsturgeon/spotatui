@@ -70,15 +70,15 @@ impl Default for Theme {
     Theme {
       analysis_bar: Color::Rgb(0, 200, 200), // LightCyan equivalent
       analysis_bar_text: Color::Reset,
-      active: Color::Rgb(0, 180, 180),            // Cyan equivalent
-      banner: Color::Rgb(0, 200, 200),            // LightCyan equivalent
-      error_border: Color::Rgb(200, 0, 0),        // Red equivalent
-      error_text: Color::Rgb(255, 100, 100),      // LightRed equivalent
-      hint: Color::Rgb(200, 200, 0),              // Yellow equivalent
-      hovered: Color::Rgb(180, 0, 180),           // Magenta equivalent
-      inactive: Color::Rgb(128, 128, 128),        // Gray equivalent
+      active: Color::Rgb(0, 180, 180),       // Cyan equivalent
+      banner: Color::Rgb(0, 200, 200),       // LightCyan equivalent
+      error_border: Color::Rgb(200, 0, 0),   // Red equivalent
+      error_text: Color::Rgb(255, 100, 100), // LightRed equivalent
+      hint: Color::Rgb(200, 200, 0),         // Yellow equivalent
+      hovered: Color::Rgb(180, 0, 180),      // Magenta equivalent
+      inactive: Color::Rgb(128, 128, 128),   // Gray equivalent
       playbar_background: Color::Reset,
-      playbar_progress: Color::Rgb(0, 200, 200),  // LightCyan equivalent
+      playbar_progress: Color::Rgb(0, 200, 200), // LightCyan equivalent
       playbar_progress_text: Color::Rgb(255, 255, 255), // Bright white for visibility
       playbar_text: Color::Reset,
       selected: Color::Rgb(0, 200, 200), // LightCyan equivalent
@@ -180,9 +180,9 @@ impl ThemePreset {
         banner: Color::Rgb(255, 121, 198),            // Pink
         error_border: Color::Rgb(255, 85, 85),        // Red
         error_text: Color::Rgb(255, 85, 85),
-        hint: Color::Rgb(241, 250, 140),            // Yellow
-        hovered: Color::Rgb(189, 147, 249),         // Purple
-        inactive: Color::Rgb(98, 114, 164),         // Comment
+        hint: Color::Rgb(241, 250, 140),    // Yellow
+        hovered: Color::Rgb(189, 147, 249), // Purple
+        inactive: Color::Rgb(98, 114, 164), // Comment
         playbar_background: Color::Reset,
         playbar_progress: Color::Rgb(80, 250, 123), // Green
         playbar_progress_text: Color::Rgb(248, 248, 242),
@@ -200,9 +200,9 @@ impl ThemePreset {
         banner: Color::Rgb(136, 192, 208),            // Nord8
         error_border: Color::Rgb(191, 97, 106),       // Nord11 (red)
         error_text: Color::Rgb(191, 97, 106),
-        hint: Color::Rgb(235, 203, 139),            // Nord13 (yellow)
-        hovered: Color::Rgb(180, 142, 173),         // Nord15 (purple)
-        inactive: Color::Rgb(76, 86, 106),          // Nord3
+        hint: Color::Rgb(235, 203, 139),    // Nord13 (yellow)
+        hovered: Color::Rgb(180, 142, 173), // Nord15 (purple)
+        inactive: Color::Rgb(76, 86, 106),  // Nord3
         playbar_background: Color::Reset,
         playbar_progress: Color::Rgb(136, 192, 208), // Nord8
         playbar_progress_text: Color::Rgb(236, 239, 244),
@@ -220,9 +220,9 @@ impl ThemePreset {
         banner: Color::Rgb(38, 139, 210),             // Blue
         error_border: Color::Rgb(220, 50, 47),        // Red
         error_text: Color::Rgb(220, 50, 47),
-        hint: Color::Rgb(181, 137, 0),              // Yellow
-        hovered: Color::Rgb(211, 54, 130),          // Magenta
-        inactive: Color::Rgb(88, 110, 117),         // Base01
+        hint: Color::Rgb(181, 137, 0),      // Yellow
+        hovered: Color::Rgb(211, 54, 130),  // Magenta
+        inactive: Color::Rgb(88, 110, 117), // Base01
         playbar_background: Color::Reset,
         playbar_progress: Color::Rgb(42, 161, 152), // Cyan
         playbar_progress_text: Color::Rgb(253, 246, 227),
@@ -240,9 +240,9 @@ impl ThemePreset {
         banner: Color::Rgb(249, 38, 114),             // Pink
         error_border: Color::Rgb(249, 38, 114),       // Pink (error)
         error_text: Color::Rgb(249, 38, 114),
-        hint: Color::Rgb(230, 219, 116),            // Yellow
-        hovered: Color::Rgb(174, 129, 255),         // Purple
-        inactive: Color::Rgb(117, 113, 94),         // Comment
+        hint: Color::Rgb(230, 219, 116),    // Yellow
+        hovered: Color::Rgb(174, 129, 255), // Purple
+        inactive: Color::Rgb(117, 113, 94), // Comment
         playbar_background: Color::Reset,
         playbar_progress: Color::Rgb(166, 226, 46), // Green
         playbar_progress_text: Color::Rgb(248, 248, 242),
@@ -260,9 +260,9 @@ impl ThemePreset {
         banner: Color::Rgb(254, 128, 25),             // Orange
         error_border: Color::Rgb(251, 73, 52),        // Red
         error_text: Color::Rgb(251, 73, 52),
-        hint: Color::Rgb(250, 189, 47),             // Yellow
-        hovered: Color::Rgb(211, 134, 155),         // Purple
-        inactive: Color::Rgb(146, 131, 116),        // Gray
+        hint: Color::Rgb(250, 189, 47),      // Yellow
+        hovered: Color::Rgb(211, 134, 155),  // Purple
+        inactive: Color::Rgb(146, 131, 116), // Gray
         playbar_background: Color::Reset,
         playbar_progress: Color::Rgb(184, 187, 38), // Green
         playbar_progress_text: Color::Rgb(235, 219, 178),
@@ -294,21 +294,21 @@ impl ThemePreset {
         highlighted_lyrics: Color::Rgb(175, 58, 3), // Orange
       },
       ThemePreset::CatppuccinMocha => Theme {
-        analysis_bar: Color::Rgb(166, 227, 161),        // Green
-        analysis_bar_text: Color::Rgb(205, 214, 244),   // Text
-        active: Color::Rgb(180, 190, 254),              // Lavender
-        banner: Color::Rgb(180, 190, 254),              // Lavender
-        error_border: Color::Rgb(243, 139, 168),        // Red
-        error_text: Color::Rgb(243, 139, 168),          // Red
-        hint: Color::Rgb(250, 179, 135),                // Peach
-        hovered: Color::Rgb(137, 180, 250),             // Blue
-        inactive: Color::Rgb(108, 112, 134),            // Overlay 0
+        analysis_bar: Color::Rgb(166, 227, 161),      // Green
+        analysis_bar_text: Color::Rgb(205, 214, 244), // Text
+        active: Color::Rgb(180, 190, 254),            // Lavender
+        banner: Color::Rgb(180, 190, 254),            // Lavender
+        error_border: Color::Rgb(243, 139, 168),      // Red
+        error_text: Color::Rgb(243, 139, 168),        // Red
+        hint: Color::Rgb(250, 179, 135),              // Peach
+        hovered: Color::Rgb(137, 180, 250),           // Blue
+        inactive: Color::Rgb(108, 112, 134),          // Overlay 0
         playbar_background: Color::Reset,
-        playbar_progress: Color::Rgb(180, 190, 254),    // Lavender
+        playbar_progress: Color::Rgb(180, 190, 254), // Lavender
         playbar_progress_text: Color::Rgb(88, 91, 112), // Surface 2
-        playbar_text: Color::Rgb(186, 194, 222),        // Subtext 1
-        selected: Color::Rgb(180, 190, 254),            // Lavender
-        text: Color::Rgb(205, 214, 244),                // Text
+        playbar_text: Color::Rgb(186, 194, 222),     // Subtext 1
+        selected: Color::Rgb(180, 190, 254),         // Lavender
+        text: Color::Rgb(205, 214, 244),             // Text
         background: Color::Reset,
         header: Color::Rgb(180, 190, 254),             // Lavender
         highlighted_lyrics: Color::Rgb(180, 190, 254), // Lavender
@@ -320,11 +320,11 @@ impl ThemePreset {
         banner: Color::Rgb(29, 185, 84),       // Spotify Green
         error_border: Color::Rgb(230, 76, 76), // Soft red
         error_text: Color::Rgb(230, 76, 76),
-        hint: Color::Rgb(179, 179, 179),            // Gray hint
-        hovered: Color::Rgb(29, 185, 84),           // Spotify Green
-        inactive: Color::Rgb(83, 83, 83),           // Dark gray
+        hint: Color::Rgb(179, 179, 179),  // Gray hint
+        hovered: Color::Rgb(29, 185, 84), // Spotify Green
+        inactive: Color::Rgb(83, 83, 83), // Dark gray
         playbar_background: Color::Reset,
-        playbar_progress: Color::Rgb(29, 185, 84),  // Spotify Green
+        playbar_progress: Color::Rgb(29, 185, 84), // Spotify Green
         playbar_progress_text: Color::Rgb(255, 255, 255),
         playbar_text: Color::Rgb(179, 179, 179), // Light gray
         selected: Color::Rgb(29, 185, 84),       // Spotify Green

@@ -86,9 +86,9 @@ pub enum IoEvent {
   SetArtistsToTable(Vec<FullArtist>),
   UserArtistFollowCheck(Vec<ArtistId<'static>>),
   GetAlbum(AlbumId<'static>),
-  TransferPlaybackToDevice(String),
+  TransferPlaybackToDevice(String, bool),
   #[allow(dead_code)]
-  AutoSelectStreamingDevice(String), // Auto-select a device by name (used for native streaming)
+  AutoSelectStreamingDevice(String, bool), // Auto-select a device by name (used for native streaming)
   GetAlbumForTrack(TrackId<'static>),
   CurrentUserSavedTracksContains(Vec<TrackId<'static>>),
   GetCurrentUserSavedShows(Option<u32>),
@@ -350,11 +350,15 @@ impl Network {
       IoEvent::GetAlbum(album_id) => {
         self.get_album(album_id).await;
       }
-      IoEvent::TransferPlaybackToDevice(device_id) => {
-        self.transfert_playback_to_device(device_id).await;
+      IoEvent::TransferPlaybackToDevice(device_id, persist_device_id) => {
+        self
+          .transfert_playback_to_device(device_id, persist_device_id)
+          .await;
       }
-      IoEvent::AutoSelectStreamingDevice(device_name) => {
-        self.auto_select_streaming_device(device_name).await;
+      IoEvent::AutoSelectStreamingDevice(device_name, persist_device_id) => {
+        self
+          .auto_select_streaming_device(device_name, persist_device_id)
+          .await;
       }
       IoEvent::GetAlbumForTrack(track_id) => {
         self.get_album_for_track(track_id).await;
@@ -598,6 +602,9 @@ impl Network {
         #[cfg(feature = "streaming")]
         {
           app.is_streaming_active = is_native_device;
+          if is_native_device {
+            app.native_activation_pending = false;
+          }
         }
 
         // Only clear native track info if API data matches the native player's track
@@ -1005,12 +1012,31 @@ impl Network {
     #[cfg(feature = "streaming")]
     if self.is_native_streaming_active_for_playback().await {
       if let Some(ref player) = self.streaming_player {
-        // Ensure the native player is actually the active Spotify Connect device.
-        // `activate()` can be a no-op when we're not active, so prefer `transfer()`.
-        let _ = player.transfer(None);
-        // Give Connect a moment to apply the transfer before we load/play.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        let activation_time = Instant::now();
+        let should_transfer = {
+          let app = self.app.lock().await;
+          let activation_pending = app.native_activation_pending;
+          let recent_activation = app
+            .last_device_activation
+            .is_some_and(|instant| instant.elapsed() < Duration::from_secs(5));
+          if activation_pending {
+            !recent_activation
+          } else {
+            !app.is_streaming_active && !recent_activation
+          }
+        };
+
+        if should_transfer {
+          let _ = player.transfer(None);
+        }
+
         player.activate();
+        {
+          let mut app = self.app.lock().await;
+          app.is_streaming_active = true;
+          app.last_device_activation = Some(activation_time);
+          app.native_activation_pending = false;
+        }
 
         // For resume playback (no context, no uris)
         if context_id.is_none() && uris.is_none() {
@@ -2539,7 +2565,7 @@ impl Network {
     }
   }
 
-  async fn transfert_playback_to_device(&mut self, device_id: String) {
+  async fn transfert_playback_to_device(&mut self, device_id: String, persist_device_id: bool) {
     // Check if we're selecting the native streaming device
     // Native streaming uses Spirc (Spotify Connect) which doesn't work with the Web API's transfer_playback
     #[cfg(feature = "streaming")]
@@ -2547,14 +2573,14 @@ impl Network {
       let is_native_device = if let Some(ref player) = self.streaming_player {
         // Get the device name from the streaming player
         let native_name = player.device_name().to_lowercase();
-        // Check if any device with this device_id matches the native device name
-        if let Ok(devices) = self.spotify.device().await {
-          devices
+        let app = self.app.lock().await;
+        let matches_cached_device = app.devices.as_ref().is_some_and(|payload| {
+          payload
+            .devices
             .iter()
             .any(|d| d.id.as_ref() == Some(&device_id) && d.name.to_lowercase() == native_name)
-        } else {
-          false
-        }
+        });
+        matches_cached_device || app.native_device_id.as_ref() == Some(&device_id)
       } else {
         false
       };
@@ -2564,30 +2590,57 @@ impl Network {
         // The Web API returns 404 for native streaming devices because they use
         // a different OAuth session (librespot-oauth)
         if let Some(ref player) = self.streaming_player {
-          let _ = player.transfer(None);
-          player.activate();
+          let activation_time = Instant::now();
+          let should_transfer = {
+            let app = self.app.lock().await;
+            let recent_activation = app
+              .last_device_activation
+              .is_some_and(|instant| instant.elapsed() < Duration::from_secs(5));
+            !app.native_activation_pending && !app.is_streaming_active && !recent_activation
+          };
 
-          // Mark streaming as active
           {
             let mut app = self.app.lock().await;
             app.is_streaming_active = true;
             app.native_device_id = Some(device_id.clone());
+            app.last_device_activation = Some(activation_time);
+            app.native_activation_pending = true;
+            app.instant_since_last_current_playback_poll = activation_time - Duration::from_secs(6);
           }
 
-          // Refresh playback state after a brief delay to let Connect register
-          tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-          self.get_current_playback().await;
+          let player = Arc::clone(player);
+          let app = Arc::clone(&self.app);
+          let device_id_for_task = device_id.clone();
+          tokio::spawn(async move {
+            if should_transfer {
+              let _ = player.transfer(None);
+            }
 
-          // Save device ID and pop navigation
-          match self.client_config.set_device_id(device_id) {
-            Ok(()) => {
-              let mut app = self.app.lock().await;
-              app.pop_navigation_stack();
-            }
-            Err(e) => {
-              self.handle_error(e).await;
-            }
-          };
+            player.activate();
+
+            let mut app = app.lock().await;
+            app.is_streaming_active = true;
+            app.native_device_id = Some(device_id_for_task);
+            app.last_device_activation = Some(activation_time);
+            app.native_activation_pending = false;
+            app.instant_since_last_current_playback_poll = activation_time - Duration::from_secs(6);
+          });
+
+          if persist_device_id {
+            // Save device ID and pop navigation
+            match self.client_config.set_device_id(device_id) {
+              Ok(()) => {
+                let mut app = self.app.lock().await;
+                app.pop_navigation_stack();
+              }
+              Err(e) => {
+                self.handle_error(e).await;
+              }
+            };
+          } else {
+            let mut app = self.app.lock().await;
+            app.pop_navigation_stack();
+          }
           return;
         }
       }
@@ -2603,6 +2656,8 @@ impl Network {
           let mut app = self.app.lock().await;
           app.is_streaming_active = false;
           app.native_device_id = None;
+          app.last_device_activation = None;
+          app.native_activation_pending = false;
         }
         self.get_current_playback().await;
       }
@@ -2612,43 +2667,72 @@ impl Network {
       }
     };
 
-    match self.client_config.set_device_id(device_id) {
-      Ok(()) => {
-        let mut app = self.app.lock().await;
-        app.pop_navigation_stack();
-      }
-      Err(e) => {
-        self.handle_error(e).await;
-      }
-    };
+    if persist_device_id {
+      match self.client_config.set_device_id(device_id) {
+        Ok(()) => {
+          let mut app = self.app.lock().await;
+          app.pop_navigation_stack();
+        }
+        Err(e) => {
+          self.handle_error(e).await;
+        }
+      };
+    } else {
+      let mut app = self.app.lock().await;
+      app.pop_navigation_stack();
+    }
   }
 
   /// Auto-select a streaming device by name (used for native spotatui streaming)
   /// This will retry a few times since the device may take a moment to appear in Spotify's device list
-  async fn auto_select_streaming_device(&mut self, device_name: String) {
+  async fn auto_select_streaming_device(&mut self, device_name: String, persist_device_id: bool) {
     // For native streaming, we use Spirc activation directly instead of the Web API's transfer_playback
     // The Web API returns 404 for native streaming devices because they use
     // a different OAuth session (librespot-oauth)
 
     // Wait a moment for the streaming player to fully register with Spotify Connect
-    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // Activate the native streaming device via Spirc
     if let Some(ref player) = self.streaming_player {
-      let _ = player.transfer(None);
-      player.activate();
+      let activation_time = Instant::now();
+      let should_transfer = {
+        let app = self.app.lock().await;
+        let recent_activation = app
+          .last_device_activation
+          .is_some_and(|instant| instant.elapsed() < Duration::from_secs(5));
+        !app.native_activation_pending && !app.is_streaming_active && !recent_activation
+      };
 
-      // Mark streaming as active
       {
         let mut app = self.app.lock().await;
         app.is_streaming_active = true;
+        app.native_activation_pending = true;
+        app.last_device_activation = Some(activation_time);
+        app.instant_since_last_current_playback_poll = activation_time - Duration::from_secs(6);
       }
+
+      let player = Arc::clone(player);
+      let app = Arc::clone(&self.app);
+      tokio::spawn(async move {
+        if should_transfer {
+          let _ = player.transfer(None);
+        }
+
+        player.activate();
+
+        let mut app = app.lock().await;
+        app.is_streaming_active = true;
+        app.native_activation_pending = false;
+        app.last_device_activation = Some(activation_time);
+        app.instant_since_last_current_playback_poll = activation_time - Duration::from_secs(6);
+      });
 
       // Now try to get the device_id from Spotify's device list and save it
       // Retry a few times since the device may take a moment to appear
-      for attempt in 0..5 {
+      for attempt in 0..2 {
         if attempt > 0 {
-          tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+          tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
         match self.spotify.device().await {
@@ -2659,8 +2743,10 @@ impl Network {
               .find(|d| d.name.to_lowercase() == device_name.to_lowercase())
             {
               if let Some(device_id) = &device.id {
-                // Save device ID to config (don't use transfer_playback - just save the ID)
-                let _ = self.client_config.set_device_id(device_id.clone());
+                if persist_device_id {
+                  // Save device ID to config (don't use transfer_playback - just save the ID)
+                  let _ = self.client_config.set_device_id(device_id.clone());
+                }
                 let mut app = self.app.lock().await;
                 app.native_device_id = Some(device_id.clone());
                 return;
