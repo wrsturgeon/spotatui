@@ -33,6 +33,7 @@ pub enum MprisCommand {
     artists: Vec<String>,
     album: String,
     duration_ms: u32,
+    art_url: Option<String>,
   },
   PlaybackStatus(bool), // true = playing, false = paused
   Position(u64),        // position in milliseconds (for future use)
@@ -136,18 +137,25 @@ impl MprisManager {
               artists,
               album,
               duration_ms,
+              art_url,
             } => {
-              let metadata = Metadata::builder()
+              let mut builder = Metadata::builder()
                 .title(&title)
                 .artist(artists.iter().map(|s| s.as_str()).collect::<Vec<_>>())
                 .album(&album)
-                .length(Time::from_millis(duration_ms as i64))
-                .build();
+                .length(Time::from_millis(duration_ms as i64));
+
+              if let Some(url) = &art_url {
+                builder = builder.art_url(url);
+              }
+
+              let metadata = builder.build();
 
               if let Err(e) = player.set_metadata(metadata).await {
                 eprintln!("MPRIS: Failed to set metadata: {}", e);
               }
             }
+
             MprisCommand::PlaybackStatus(is_playing) => {
               let status = if is_playing {
                 PlaybackStatus::Playing
@@ -191,12 +199,20 @@ impl MprisManager {
   }
 
   /// Update track metadata
-  pub fn set_metadata(&self, title: &str, artists: &[String], album: &str, duration_ms: u32) {
+  pub fn set_metadata(
+    &self,
+    title: &str,
+    artists: &[String],
+    album: &str,
+    duration_ms: u32,
+    art_url: Option<String>,
+  ) {
     let _ = self.command_tx.send(MprisCommand::Metadata {
       title: title.to_string(),
       artists: artists.to_vec(),
       album: album.to_string(),
       duration_ms,
+      art_url,
     });
   }
 

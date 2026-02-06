@@ -131,6 +131,18 @@ struct DiscordPresenceState {
   last_progress_ms: u128,
 }
 
+#[cfg(feature = "mpris")]
+#[derive(Default, PartialEq)]
+struct MprisMetadata {
+  title: String,
+  artists: Vec<String>,
+  album: String,
+  duration_ms: u32,
+  art_url: Option<String>,
+}
+#[cfg(feature = "mpris")]
+type MprisMetadataTuple = (String, Vec<String>, String, u32, Option<String>);
+
 #[cfg(feature = "discord-rpc")]
 fn resolve_discord_app_id(user_config: &UserConfig) -> Option<String> {
   std::env::var("SPOTATUI_DISCORD_APP_ID")
@@ -216,6 +228,34 @@ fn build_discord_playback(app: &App) -> Option<discord_rpc::DiscordPlayback> {
   })
 }
 
+#[cfg(feature = "mpris")]
+fn get_mpris_metadata(app: &App) -> Option<MprisMetadataTuple> {
+  use crate::ui::util::create_artist_string;
+  use rspotify::model::PlayableItem;
+
+  if let Some(context) = &app.current_playback_context {
+    let item = context.item.as_ref()?;
+    match item {
+      PlayableItem::Track(track) => Some((
+        track.name.clone(),
+        vec![create_artist_string(&track.artists)],
+        track.album.name.clone(),
+        track.duration.num_milliseconds() as u32,
+        track.album.images.first().map(|image| image.url.clone()),
+      )),
+      PlayableItem::Episode(episode) => Some((
+        episode.name.clone(),
+        vec![episode.show.name.clone()],
+        String::new(),
+        episode.duration.num_milliseconds() as u32,
+        episode.images.first().map(|image| image.url.clone()),
+      )),
+    }
+  } else {
+    None
+  }
+}
+
 #[cfg(feature = "discord-rpc")]
 fn update_discord_presence(
   manager: &discord_rpc::DiscordRpcManager,
@@ -253,6 +293,34 @@ fn update_discord_presence(
         state.last_is_playing = None;
         state.last_progress_ms = 0;
       }
+    }
+  }
+}
+
+#[cfg(feature = "mpris")]
+fn update_mpris_metadata(
+  manager: &mpris::MprisManager,
+  last_metadata: &mut Option<MprisMetadata>,
+  app: &App,
+) {
+  if let Some((title, artists, album, duration_ms, art_url)) = get_mpris_metadata(app) {
+    let new_metadata = MprisMetadata {
+      title: title.clone(),
+      artists: artists.clone(),
+      album: album.clone(),
+      duration_ms,
+      art_url: art_url.clone(),
+    };
+
+    // Only update if metadata changed
+    if last_metadata.as_ref() != Some(&new_metadata) {
+      manager.set_metadata(&title, &artists, &album, duration_ms, art_url);
+      *last_metadata = Some(new_metadata);
+    }
+  } else {
+    // Clear if no playback
+    if last_metadata.is_some() {
+      *last_metadata = None;
     }
   }
 }
@@ -1092,7 +1160,13 @@ async fn handle_player_events(
 
         // Update MPRIS metadata
         if let Some(ref mpris) = mpris_manager {
-          mpris.set_metadata(&audio_item.name, &artists, &album, audio_item.duration_ms);
+          mpris.set_metadata(
+            &audio_item.name,
+            &artists,
+            &album,
+            audio_item.duration_ms,
+            None,
+          );
         }
 
         if let Ok(mut app) = app.try_lock() {
@@ -1483,6 +1557,9 @@ async fn start_ui(
   #[cfg(feature = "discord-rpc")]
   let mut discord_presence_state = DiscordPresenceState::default();
 
+  #[cfg(feature = "mpris")]
+  let mut mpris_metadata_state: Option<MprisMetadata> = None;
+
   // Update check will run async after first render to avoid blocking startup
   let mut update_check_spawned = false;
   let mut is_first_render = true;
@@ -1629,6 +1706,11 @@ async fn start_ui(
         #[cfg(feature = "discord-rpc")]
         if let Some(ref manager) = discord_rpc_manager {
           update_discord_presence(manager, &mut discord_presence_state, &app);
+        }
+
+        #[cfg(feature = "mpris")]
+        if let Some(ref mpris) = mpris_manager {
+          update_mpris_metadata(mpris, &mut mpris_metadata_state, &app);
         }
 
         // Read position from shared atomic if native streaming is active
