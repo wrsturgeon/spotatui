@@ -48,6 +48,10 @@ const DEFAULT_ROUTE: Route = Route {
   hovered_block: ActiveBlock::Library,
 };
 
+/// How long to ignore position updates after a seek (ms)
+/// This prevents the UI from jumping back to old positions while the seek completes
+pub const SEEK_POSITION_IGNORE_MS: u128 = 500;
+
 #[derive(Clone)]
 pub struct ScrollableResultPages<T> {
   pub index: usize,
@@ -806,10 +810,9 @@ impl App {
         .as_millis();
 
       // Skip position updates if we recently seeked (let UI show our target position)
-      const SEEK_IGNORE_MS: u128 = 500;
       let recently_seeked = self
         .last_api_seek
-        .is_some_and(|t| t.elapsed().as_millis() < SEEK_IGNORE_MS);
+        .is_some_and(|t| t.elapsed().as_millis() < SEEK_POSITION_IGNORE_MS);
 
       if recently_seeked {
         return; // Don't overwrite our seek target
@@ -859,46 +862,7 @@ impl App {
 
       // Use native streaming player for instant control (bypasses event channel latency)
       #[cfg(feature = "streaming")]
-      if self.is_native_streaming_active_for_playback() {
-        if self.streaming_player.is_some() {
-          // Always update UI immediately
-          self.song_progress_ms = new_progress as u128;
-          self.seek_ms = None;
-
-          // Throttle actual seeks to avoid overwhelming librespot (max ~20/sec)
-          const SEEK_THROTTLE_MS: u128 = 50;
-          let should_seek_now = self
-            .last_native_seek
-            .is_none_or(|t| t.elapsed().as_millis() >= SEEK_THROTTLE_MS);
-
-          if should_seek_now {
-            self.execute_native_seek(new_progress);
-          } else {
-            // Queue the seek - will be flushed by tick loop or next seek
-            self.pending_native_seek = Some(new_progress);
-          }
-          return;
-        }
-      }
-
-      // Fallback: API-based seek for external devices (with throttling)
-      self.queue_api_seek(new_progress);
-    }
-  }
-
-  pub fn seek_backwards(&mut self) {
-    let old_progress = match self.seek_ms {
-      Some(seek_ms) => seek_ms,
-      None => self.song_progress_ms,
-    };
-    let new_progress =
-      (old_progress as u32).saturating_sub(self.user_config.behavior.seek_milliseconds);
-    self.seek_ms = Some(new_progress as u128);
-
-    // Use native streaming player for instant control (bypasses event channel latency)
-    #[cfg(feature = "streaming")]
-    if self.is_native_streaming_active_for_playback() {
-      if self.streaming_player.is_some() {
+      if self.is_native_streaming_active_for_playback() && self.streaming_player.is_some() {
         // Always update UI immediately
         self.song_progress_ms = new_progress as u128;
         self.seek_ms = None;
@@ -917,6 +881,41 @@ impl App {
         }
         return;
       }
+
+      // Fallback: API-based seek for external devices (with throttling)
+      self.queue_api_seek(new_progress);
+    }
+  }
+
+  pub fn seek_backwards(&mut self) {
+    let old_progress = match self.seek_ms {
+      Some(seek_ms) => seek_ms,
+      None => self.song_progress_ms,
+    };
+    let new_progress =
+      (old_progress as u32).saturating_sub(self.user_config.behavior.seek_milliseconds);
+    self.seek_ms = Some(new_progress as u128);
+
+    // Use native streaming player for instant control (bypasses event channel latency)
+    #[cfg(feature = "streaming")]
+    if self.is_native_streaming_active_for_playback() && self.streaming_player.is_some() {
+      // Always update UI immediately
+      self.song_progress_ms = new_progress as u128;
+      self.seek_ms = None;
+
+      // Throttle actual seeks to avoid overwhelming librespot (max ~20/sec)
+      const SEEK_THROTTLE_MS: u128 = 50;
+      let should_seek_now = self
+        .last_native_seek
+        .is_none_or(|t| t.elapsed().as_millis() >= SEEK_THROTTLE_MS);
+
+      if should_seek_now {
+        self.execute_native_seek(new_progress);
+      } else {
+        // Queue the seek - will be flushed by tick loop or next seek
+        self.pending_native_seek = Some(new_progress);
+      }
+      return;
     }
 
     // Fallback: API-based seek for external devices (with throttling)
@@ -929,16 +928,22 @@ impl App {
     self.song_progress_ms = position_ms as u128;
     self.seek_ms = None;
 
-    // Mark current poll data as stale so it won't override our target after ignore window
-    // By setting this to now, when the 500ms ignore window expires, the poll data
-    // will be >500ms old (>300ms threshold), so resync won't happen
-    self.instant_since_last_current_playback_poll = Instant::now();
+    // Start the ignore window immediately when the user requests a seek
+    // This prevents position updates from overwriting our target while waiting
+    let now = Instant::now();
 
-    // Throttle API calls more aggressively (max ~5/sec to respect rate limits)
+    // Mark poll data as stale so resync won't happen after ignore window
+    self.instant_since_last_current_playback_poll = now;
+
+    // Throttle API calls (max ~5/sec to respect rate limits)
     const API_SEEK_THROTTLE_MS: u128 = 200;
     let should_seek_now = self
       .last_api_seek
       .is_none_or(|t| t.elapsed().as_millis() >= API_SEEK_THROTTLE_MS);
+
+    // Update last_api_seek for BOTH the ignore window AND throttling
+    // This ensures the ignore window starts immediately on any seek request
+    self.last_api_seek = Some(now);
 
     if should_seek_now {
       self.execute_api_seek(position_ms);
@@ -950,7 +955,6 @@ impl App {
 
   /// Execute an API-based seek
   fn execute_api_seek(&mut self, position_ms: u32) {
-    self.last_api_seek = Some(Instant::now());
     self.pending_api_seek = None;
     self.apply_seek(position_ms);
   }

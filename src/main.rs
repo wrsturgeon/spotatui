@@ -1821,10 +1821,9 @@ async fn start_ui(
         #[cfg(feature = "streaming")]
         if let Some(ref pos) = shared_position {
           if app.is_streaming_active {
-            const SEEK_IGNORE_MS: u128 = 500; // Ignore position events for 500ms after seeking
             let recently_seeked = app
               .last_native_seek
-              .is_some_and(|t| t.elapsed().as_millis() < SEEK_IGNORE_MS);
+              .is_some_and(|t| t.elapsed().as_millis() < app::SEEK_POSITION_IGNORE_MS);
 
             if !recently_seeked {
               let position_ms = pos.load(Ordering::Relaxed);
@@ -2080,10 +2079,9 @@ async fn start_ui(
         // Skip if we recently seeked - let the UI show our target position until the player catches up
         #[cfg(feature = "streaming")]
         if let Some(ref pos) = shared_position {
-          const SEEK_IGNORE_MS: u128 = 500;
           let recently_seeked = app
             .last_native_seek
-            .is_some_and(|t| t.elapsed().as_millis() < SEEK_IGNORE_MS);
+            .is_some_and(|t| t.elapsed().as_millis() < app::SEEK_POSITION_IGNORE_MS);
 
           if !recently_seeked {
             let pos_ms = pos.load(Ordering::Relaxed) as u128;
