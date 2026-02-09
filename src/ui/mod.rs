@@ -305,6 +305,7 @@ pub fn draw_routes(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
     RouteId::Dialog => {} // This is handled in the draw_dialog function in mod.rs
     RouteId::UpdatePrompt => {} // This is handled as a "full screen" route in main.rs
     RouteId::Settings => {} // This is handled as a "full screen" route in main.rs
+    RouteId::HelpMenu => {} // This is handled as a "full screen" route in main.rs
   };
 }
 

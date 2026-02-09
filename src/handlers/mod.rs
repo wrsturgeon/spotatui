@@ -74,7 +74,7 @@ pub fn handle_app(key: Key, app: &mut App) {
       app.previous_track();
     }
     _ if key == app.user_config.keys.help => {
-      app.set_current_route_state(Some(ActiveBlock::HelpMenu), None);
+      app.push_navigation_stack(RouteId::HelpMenu, ActiveBlock::HelpMenu);
     }
 
     _ if key == app.user_config.keys.shuffle => {
@@ -202,6 +202,9 @@ fn handle_escape(app: &mut App) {
       app.pop_navigation_stack();
     }
     ActiveBlock::Dialog(_) => {
+      app.pop_navigation_stack();
+    }
+    ActiveBlock::HelpMenu => {
       app.pop_navigation_stack();
     }
     // These are global views that have no active/inactive distinction so do nothing

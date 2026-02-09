@@ -171,6 +171,7 @@ pub enum RouteId {
   Dialog,
   UpdatePrompt,
   Settings,
+  HelpMenu,
 }
 
 #[derive(Debug)]
