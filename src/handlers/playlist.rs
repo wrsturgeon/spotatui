@@ -10,48 +10,44 @@ pub fn handler(key: Key, app: &mut App) {
   match key {
     k if common_key_events::right_event(k) => common_key_events::handle_right_event(app),
     k if common_key_events::down_event(k) => {
-      let display_items = app.get_playlist_display_items();
-      if !display_items.is_empty() {
-        if let Some(selected_playlist_index) = app.selected_playlist_index {
-          let next_index =
-            common_key_events::on_down_press_handler(&display_items, Some(selected_playlist_index));
-          app.selected_playlist_index = Some(next_index);
-        }
+      let count = app.get_playlist_display_count();
+      if count > 0 {
+        let current = app.selected_playlist_index.unwrap_or(0);
+        app.selected_playlist_index = Some((current + 1) % count);
       }
     }
     k if common_key_events::up_event(k) => {
-      let display_items = app.get_playlist_display_items();
-      if !display_items.is_empty() {
-        let next_index =
-          common_key_events::on_up_press_handler(&display_items, app.selected_playlist_index);
-        app.selected_playlist_index = Some(next_index);
+      let count = app.get_playlist_display_count();
+      if count > 0 {
+        let current = app.selected_playlist_index.unwrap_or(0);
+        app.selected_playlist_index = Some(if current == 0 { count - 1 } else { current - 1 });
       }
     }
     k if common_key_events::high_event(k) => {
-      let display_items = app.get_playlist_display_items();
-      if !display_items.is_empty() {
-        let next_index = common_key_events::on_high_press_handler();
-        app.selected_playlist_index = Some(next_index);
+      if app.get_playlist_display_count() > 0 {
+        app.selected_playlist_index = Some(0);
       }
     }
     k if common_key_events::middle_event(k) => {
-      let display_items = app.get_playlist_display_items();
-      if !display_items.is_empty() {
-        let next_index = common_key_events::on_middle_press_handler(&display_items);
+      let count = app.get_playlist_display_count();
+      if count > 0 {
+        let next_index = if count.is_multiple_of(2) {
+          count.saturating_sub(1) / 2
+        } else {
+          count / 2
+        };
         app.selected_playlist_index = Some(next_index);
       }
     }
     k if common_key_events::low_event(k) => {
-      let display_items = app.get_playlist_display_items();
-      if !display_items.is_empty() {
-        let next_index = common_key_events::on_low_press_handler(&display_items);
-        app.selected_playlist_index = Some(next_index);
+      let count = app.get_playlist_display_count();
+      if count > 0 {
+        app.selected_playlist_index = Some(count - 1);
       }
     }
     Key::Enter => {
-      let display_items = app.get_playlist_display_items();
       if let Some(selected_idx) = app.selected_playlist_index {
-        if let Some(item) = display_items.get(selected_idx) {
+        if let Some(item) = app.get_playlist_display_item_at(selected_idx) {
           match item {
             PlaylistFolderItem::Folder(folder) => {
               // Navigate into/out of folder
@@ -78,9 +74,10 @@ pub fn handler(key: Key, app: &mut App) {
       }
     }
     Key::Char('D') => {
-      let display_items = app.get_playlist_display_items();
       if let Some(selected_idx) = app.selected_playlist_index {
-        if let Some(PlaylistFolderItem::Playlist { index, .. }) = display_items.get(selected_idx) {
+        if let Some(PlaylistFolderItem::Playlist { index, .. }) =
+          app.get_playlist_display_item_at(selected_idx)
+        {
           if let Some(playlist) = app.all_playlists.get(*index) {
             let selected_playlist = &playlist.name;
             app.dialog = Some(selected_playlist.clone());

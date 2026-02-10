@@ -329,8 +329,8 @@ pub fn draw_library_block(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
 pub fn draw_playlist_block(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
   let display_items = app.get_playlist_display_items();
 
-  let playlist_items: Vec<String> = if display_items.is_empty() {
-    // Fallback: show flat list from legacy playlists field
+  let playlist_items: Vec<String> = if app.playlist_folder_items.is_empty() {
+    // Fallback only when folder-aware items are not initialized yet
     match &app.playlists {
       Some(p) => p.items.iter().map(|item| item.name.to_owned()).collect(),
       None => vec![],

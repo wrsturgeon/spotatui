@@ -106,10 +106,8 @@ fn apply_sort(app: &mut App, field: SortField) {
       SortContext::PlaylistTracks => {
         // For playlists, dispatch network event to fetch all tracks and sort
         // Get the current playlist ID
-        if let (Some(playlists), Some(selected_index)) =
-          (&app.playlists, app.selected_playlist_index)
-        {
-          if let Some(playlist) = playlists.items.get(selected_index) {
+        if let Some(active_playlist_index) = app.active_playlist_index {
+          if let Some(playlist) = app.all_playlists.get(active_playlist_index) {
             let playlist_id = playlist.id.clone().into_static();
             app.dispatch(crate::network::IoEvent::FetchAllPlaylistTracksAndSort(
               playlist_id,

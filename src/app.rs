@@ -335,10 +335,18 @@ pub struct NativeTrackInfo {
 }
 
 /// A node in the playlist folder hierarchy from Spotify's rootlist
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum PlaylistFolderNodeType {
+  Folder,
+  Playlist,
+}
+
+/// A node in the playlist folder hierarchy from Spotify's rootlist
 #[derive(Clone, Debug)]
 pub struct PlaylistFolderNode {
   pub name: Option<String>,
-  pub node_type: String, // "folder" or "playlist"
+  pub node_type: PlaylistFolderNodeType,
   pub uri: String,
   pub children: Vec<PlaylistFolderNode>,
 }
@@ -539,13 +547,16 @@ pub struct App {
   /// Whether native streaming is active (disables API-based progress calculation)
   pub is_streaming_active: bool,
   /// Device id for the native streaming device when known
+  #[allow(dead_code)]
   pub native_device_id: Option<String>,
   /// Native playback state - updated by player events, used when streaming is active
   /// This is more reliable than current_playback_context.is_playing during native streaming
   pub native_is_playing: Option<bool>,
   /// Timestamp of the last native device activation
+  #[allow(dead_code)]
   pub last_device_activation: Option<Instant>,
   /// Whether a native device activation is still in progress
+  #[allow(dead_code)]
   pub native_activation_pending: bool,
   /// Selected index in the Discover view
   pub discover_selected_index: usize,
@@ -584,6 +595,8 @@ pub struct App {
   pub playlist_folder_items: Vec<PlaylistFolderItem>,
   /// Current folder ID being viewed (0 = root)
   pub current_playlist_folder_id: usize,
+  /// Incremented every time playlists are refreshed to guard stale background tasks
+  pub playlist_refresh_generation: u64,
   /// Reference to the native streaming player for direct control (bypasses event channel)
   #[cfg(feature = "streaming")]
   pub streaming_player: Option<Arc<crate::player::StreamingPlayer>>,
@@ -725,6 +738,7 @@ impl Default for App {
       playlist_folder_nodes: None,
       playlist_folder_items: Vec::new(),
       current_playlist_folder_id: 0,
+      playlist_refresh_generation: 0,
       #[cfg(feature = "streaming")]
       streaming_player: None,
       #[cfg(all(feature = "mpris", target_os = "linux"))]
@@ -765,19 +779,39 @@ impl App {
     self.io_tx = None;
   }
 
-  /// Get the items visible in the current folder level.
-  /// Returns a filtered view of playlist_folder_items where current_id matches
-  /// the current_playlist_folder_id.
+  pub fn is_playlist_item_visible_in_current_folder(&self, item: &PlaylistFolderItem) -> bool {
+    match item {
+      PlaylistFolderItem::Folder(f) => f.current_id == self.current_playlist_folder_id,
+      PlaylistFolderItem::Playlist { current_id, .. } => {
+        *current_id == self.current_playlist_folder_id
+      }
+    }
+  }
+
+  /// Get the number of items visible in the current folder level.
+  pub fn get_playlist_display_count(&self) -> usize {
+    self
+      .playlist_folder_items
+      .iter()
+      .filter(|item| self.is_playlist_item_visible_in_current_folder(item))
+      .count()
+  }
+
+  /// Get a visible item by display index in the current folder.
+  pub fn get_playlist_display_item_at(&self, display_index: usize) -> Option<&PlaylistFolderItem> {
+    self
+      .playlist_folder_items
+      .iter()
+      .filter(|item| self.is_playlist_item_visible_in_current_folder(item))
+      .nth(display_index)
+  }
+
+  /// Get visible playlist items in the current folder (used by UI rendering).
   pub fn get_playlist_display_items(&self) -> Vec<&PlaylistFolderItem> {
     self
       .playlist_folder_items
       .iter()
-      .filter(|item| match item {
-        PlaylistFolderItem::Folder(f) => f.current_id == self.current_playlist_folder_id,
-        PlaylistFolderItem::Playlist { current_id, .. } => {
-          *current_id == self.current_playlist_folder_id
-        }
-      })
+      .filter(|item| self.is_playlist_item_visible_in_current_folder(item))
       .collect()
   }
 
@@ -788,6 +822,25 @@ impl App {
       PlaylistFolderItem::Playlist { index, .. } => self.all_playlists.get(*index),
       PlaylistFolderItem::Folder(_) => None,
     }
+  }
+
+  /// Get the currently selected playlist id in the visible playlist list.
+  pub fn get_selected_playlist_id(&self) -> Option<String> {
+    let selected_index = self.selected_playlist_index?;
+    if let Some(PlaylistFolderItem::Playlist { index, .. }) =
+      self.get_playlist_display_item_at(selected_index)
+    {
+      return self
+        .all_playlists
+        .get(*index)
+        .map(|p| p.id.id().to_string());
+    }
+
+    self
+      .playlists
+      .as_ref()
+      .and_then(|playlists| playlists.items.get(selected_index))
+      .map(|playlist| playlist.id.id().to_string())
   }
 
   fn apply_seek(&mut self, seek_ms: u32) {
@@ -1793,8 +1846,9 @@ impl App {
 
   pub fn user_unfollow_playlist(&mut self) {
     if let (Some(selected_index), Some(user)) = (self.selected_playlist_index, &self.user) {
-      let display_items = self.get_playlist_display_items();
-      if let Some(PlaylistFolderItem::Playlist { index, .. }) = display_items.get(selected_index) {
+      if let Some(PlaylistFolderItem::Playlist { index, .. }) =
+        self.get_playlist_display_item_at(selected_index)
+      {
         if let Some(playlist) = self.all_playlists.get(*index) {
           let selected_id = playlist.id.clone();
           let user_id = user.id.clone();

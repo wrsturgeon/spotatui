@@ -37,6 +37,7 @@ pub use analyzer::SpectrumData;
   feature = "audio-viz-cpal"
 )))]
 #[derive(Clone, Default)]
+#[allow(dead_code)]
 pub struct SpectrumData {
   pub bands: [f32; 12],
   pub peak: f32,
@@ -46,12 +47,14 @@ pub struct SpectrumData {
   all(feature = "audio-viz", target_os = "linux"),
   feature = "audio-viz-cpal"
 )))]
+#[allow(dead_code)]
 pub struct AudioCaptureManager;
 
 #[cfg(not(any(
   all(feature = "audio-viz", target_os = "linux"),
   feature = "audio-viz-cpal"
 )))]
+#[allow(dead_code)]
 impl AudioCaptureManager {
   pub fn new() -> Option<Self> {
     None

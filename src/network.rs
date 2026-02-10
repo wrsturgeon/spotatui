@@ -1,7 +1,7 @@
 use crate::app::{
   ActiveBlock, AlbumTableContext, App, Artist, ArtistBlock, EpisodeTableContext, PlaylistFolder,
-  PlaylistFolderItem, PlaylistFolderNode, RouteId, ScrollableResultPages, SelectedAlbum,
-  SelectedFullAlbum, SelectedFullShow, SelectedShow, TrackTableContext,
+  PlaylistFolderItem, PlaylistFolderNode, PlaylistFolderNodeType, RouteId, ScrollableResultPages,
+  SelectedAlbum, SelectedFullAlbum, SelectedFullShow, SelectedShow, TrackTableContext,
 };
 use crate::config::ClientConfig;
 use crate::ui::util::create_artist_string;
@@ -41,6 +41,7 @@ pub enum IoEvent {
   GetCurrentPlayback,
   /// After a track transition (e.g., EndOfTrack), ensure we don't end up paused on the next item.
   /// The payload is the previous track identifier (either base62 id or a `spotify:track:` URI).
+  #[allow(dead_code)]
   EnsurePlaybackContinues(String),
   RefreshAuthentication,
   GetPlaylists,
@@ -118,9 +119,6 @@ pub enum IoEvent {
   GetTopArtistsMix,
   /// Fetch all playlist tracks and apply sorting
   FetchAllPlaylistTracksAndSort(PlaylistId<'static>),
-  /// Fetch all user playlists (all pages) and populate folder hierarchy
-  #[allow(dead_code)]
-  GetAllPlaylistsAndFolders,
 }
 
 pub struct Network {
@@ -141,6 +139,7 @@ struct LrcResponse {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct GlobalSongCountResponse {
   count: u64,
 }
@@ -437,9 +436,6 @@ impl Network {
       }
       IoEvent::FetchAllPlaylistTracksAndSort(playlist_id) => {
         self.fetch_all_playlist_tracks_and_sort(playlist_id).await;
-      }
-      IoEvent::GetAllPlaylistsAndFolders => {
-        self.get_all_playlists_and_folders().await;
       }
     };
 
@@ -2514,23 +2510,35 @@ impl Network {
 
     let total = first_page.total;
     let first_page_count = first_page.items.len() as u32;
+    let first_page_items = first_page.items.clone();
+
+    let (refresh_generation, preferred_playlist_id, preferred_folder_id, preferred_selected_index) = {
+      let mut app = self.app.lock().await;
+      let preferred_playlist_id = app.get_selected_playlist_id();
+      let preferred_folder_id = app.current_playlist_folder_id;
+      let preferred_selected_index = app.selected_playlist_index;
+      app.playlist_refresh_generation = app.playlist_refresh_generation.saturating_add(1);
+      (
+        app.playlist_refresh_generation,
+        preferred_playlist_id,
+        preferred_folder_id,
+        preferred_selected_index,
+      )
+    };
 
     // Step 2: Immediately populate app state with first page (flat list, no folders yet)
     {
       let mut app = self.app.lock().await;
-      app.all_playlists = first_page.items.clone();
+      app.all_playlists = first_page_items.clone();
       app.playlists = Some(first_page);
-      app.playlist_folder_items = app
-        .all_playlists
-        .iter()
-        .enumerate()
-        .map(|(idx, _)| PlaylistFolderItem::Playlist {
-          index: idx,
-          current_id: 0,
-        })
-        .collect();
-      app.current_playlist_folder_id = 0;
-      app.selected_playlist_index = Some(0);
+      app.playlist_folder_nodes = None;
+      app.playlist_folder_items = build_flat_playlist_items(&app.all_playlists);
+      reconcile_playlist_selection(
+        &mut app,
+        preferred_playlist_id.as_deref(),
+        preferred_folder_id,
+        preferred_selected_index,
+      );
     }
 
     // Step 3: Spawn background task to fetch remaining pages + rootlist folders
@@ -2547,6 +2555,11 @@ impl Network {
           limit,
           first_page_count,
           total,
+          first_page_items,
+          refresh_generation,
+          preferred_playlist_id,
+          preferred_folder_id,
+          preferred_selected_index,
           streaming_player,
         )
         .await;
@@ -2561,76 +2574,15 @@ impl Network {
           limit,
           first_page_count,
           total,
+          first_page_items,
+          refresh_generation,
+          preferred_playlist_id,
+          preferred_folder_id,
+          preferred_selected_index,
         )
         .await;
       });
     }
-  }
-
-  /// Fetch all user playlists across all pages, then attempt to fetch
-  /// folder hierarchy from rootlist API (streaming feature only).
-  /// Falls back to flat list if rootlist is unavailable.
-  async fn get_all_playlists_and_folders(&mut self) {
-    // Step 1: Fetch all playlists (paginated)
-    let mut all_playlists = Vec::new();
-    let mut offset: u32 = 0;
-    let limit: u32 = 50;
-    let max_playlists: u32 = 10_000; // Safety upper bound
-    let mut first_page: Option<Page<rspotify::model::playlist::SimplifiedPlaylist>> = None;
-
-    loop {
-      match self
-        .spotify
-        .current_user_playlists_manual(Some(limit), Some(offset))
-        .await
-      {
-        Ok(page) => {
-          if first_page.is_none() {
-            first_page = Some(page.clone());
-          }
-          let items_count = page.items.len() as u32;
-          all_playlists.extend(page.items);
-          if items_count < limit || offset >= max_playlists {
-            break;
-          }
-          offset += items_count;
-        }
-        Err(e) => {
-          self.handle_error(anyhow!(e)).await;
-          return;
-        }
-      }
-    }
-
-    // Step 2: Try to get folder hierarchy from rootlist (streaming only)
-    #[cfg(feature = "streaming")]
-    let folder_nodes = fetch_rootlist_folders(&self.streaming_player).await;
-
-    #[cfg(not(feature = "streaming"))]
-    let folder_nodes: Option<Vec<PlaylistFolderNode>> = None;
-
-    // Step 3: Build folder items and update app state
-    let folder_items = if let Some(ref nodes) = folder_nodes {
-      structurize_playlist_folders(nodes, &all_playlists)
-    } else {
-      // No folder info — create flat list
-      all_playlists
-        .iter()
-        .enumerate()
-        .map(|(idx, _)| PlaylistFolderItem::Playlist {
-          index: idx,
-          current_id: 0,
-        })
-        .collect()
-    };
-
-    let mut app = self.app.lock().await;
-    app.all_playlists = all_playlists;
-    app.playlists = first_page;
-    app.playlist_folder_nodes = folder_nodes;
-    app.playlist_folder_items = folder_items;
-    app.current_playlist_folder_id = 0;
-    app.selected_playlist_index = Some(0);
   }
 
   /// Background task: fetch remaining playlist pages and rootlist folders,
@@ -2641,6 +2593,11 @@ impl Network {
     limit: u32,
     first_page_count: u32,
     total: u32,
+    mut all_playlists: Vec<rspotify::model::playlist::SimplifiedPlaylist>,
+    refresh_generation: u64,
+    preferred_playlist_id: Option<String>,
+    preferred_folder_id: usize,
+    preferred_selected_index: Option<usize>,
     #[cfg(feature = "streaming")] streaming_player: Option<Arc<StreamingPlayer>>,
   ) {
     let max_playlists: u32 = 10_000;
@@ -2649,6 +2606,7 @@ impl Network {
     let remaining_playlists_fut = async {
       let mut remaining = Vec::new();
       let mut offset = first_page_count;
+      let mut had_error = false;
       while offset < total && offset < max_playlists {
         match spotify
           .current_user_playlists_manual(Some(limit), Some(offset))
@@ -2662,45 +2620,73 @@ impl Network {
             }
             offset += items_count;
           }
-          Err(_) => break,
+          Err(e) => {
+            had_error = true;
+            eprintln!("Failed to fetch playlist page at offset {}: {}", offset, e);
+            break;
+          }
         }
         tokio::task::yield_now().await;
       }
-      remaining
+      (remaining, had_error)
     };
 
     // Fetch rootlist folders concurrently with remaining pages (streaming only)
     #[cfg(feature = "streaming")]
-    let (remaining_playlists, folder_nodes) = tokio::join!(
+    let ((remaining_playlists, had_playlist_error), folder_nodes) = tokio::join!(
       remaining_playlists_fut,
       fetch_rootlist_folders(&streaming_player),
     );
 
     #[cfg(not(feature = "streaming"))]
-    let remaining_playlists = remaining_playlists_fut.await;
+    let (remaining_playlists, had_playlist_error) = remaining_playlists_fut.await;
     #[cfg(not(feature = "streaming"))]
     let folder_nodes: Option<Vec<PlaylistFolderNode>> = None;
 
+    all_playlists.extend(remaining_playlists);
+
     // Update app state with complete data
     let mut app = app.lock().await;
-    app.all_playlists.extend(remaining_playlists);
+    if app.playlist_refresh_generation != refresh_generation {
+      return;
+    }
+
+    app.all_playlists = all_playlists;
+    let first_items: Vec<_> = app
+      .all_playlists
+      .iter()
+      .take(limit as usize)
+      .cloned()
+      .collect();
+    let total_items = app.all_playlists.len() as u32;
+    if let Some(playlists) = app.playlists.as_mut() {
+      playlists.items = first_items;
+      playlists.total = total_items;
+      playlists.offset = 0;
+      playlists.next = None;
+      playlists.previous = None;
+    }
 
     let folder_items = if let Some(ref nodes) = folder_nodes {
       structurize_playlist_folders(nodes, &app.all_playlists)
     } else {
-      app
-        .all_playlists
-        .iter()
-        .enumerate()
-        .map(|(idx, _)| PlaylistFolderItem::Playlist {
-          index: idx,
-          current_id: 0,
-        })
-        .collect()
+      build_flat_playlist_items(&app.all_playlists)
     };
 
     app.playlist_folder_nodes = folder_nodes;
     app.playlist_folder_items = folder_items;
+
+    reconcile_playlist_selection(
+      &mut app,
+      preferred_playlist_id.as_deref(),
+      preferred_folder_id,
+      preferred_selected_index,
+    );
+
+    if had_playlist_error {
+      app.status_message = Some("Playlists partially loaded (network error)".to_string());
+      app.status_message_expires_at = Some(Instant::now() + Duration::from_secs(4));
+    }
   }
 
   async fn get_recently_played(&mut self) {
@@ -3306,6 +3292,113 @@ async fn fetch_rootlist_folders(
   Some(parse_rootlist_items(items))
 }
 
+fn build_flat_playlist_items(
+  playlists: &[rspotify::model::playlist::SimplifiedPlaylist],
+) -> Vec<PlaylistFolderItem> {
+  playlists
+    .iter()
+    .enumerate()
+    .map(|(idx, _)| PlaylistFolderItem::Playlist {
+      index: idx,
+      current_id: 0,
+    })
+    .collect()
+}
+
+fn reconcile_playlist_selection(
+  app: &mut App,
+  preferred_playlist_id: Option<&str>,
+  preferred_folder_id: usize,
+  preferred_selected_index: Option<usize>,
+) {
+  if app.playlist_folder_items.is_empty() {
+    app.current_playlist_folder_id = 0;
+    app.selected_playlist_index = None;
+    return;
+  }
+
+  let folder_has_visible = |folder_id: usize, app: &App| {
+    app.playlist_folder_items.iter().any(|item| match item {
+      PlaylistFolderItem::Folder(folder) => folder.current_id == folder_id,
+      PlaylistFolderItem::Playlist { current_id, .. } => *current_id == folder_id,
+    })
+  };
+
+  app.current_playlist_folder_id = if folder_has_visible(preferred_folder_id, app) {
+    preferred_folder_id
+  } else {
+    0
+  };
+
+  if let Some(playlist_id) = preferred_playlist_id {
+    let visible_playlist_index = app
+      .playlist_folder_items
+      .iter()
+      .filter(|item| app.is_playlist_item_visible_in_current_folder(item))
+      .enumerate()
+      .find_map(|(display_idx, item)| match item {
+        PlaylistFolderItem::Playlist { index, .. } => app
+          .all_playlists
+          .get(*index)
+          .filter(|playlist| playlist.id.id() == playlist_id)
+          .map(|_| display_idx),
+        PlaylistFolderItem::Folder(_) => None,
+      });
+
+    if let Some(display_idx) = visible_playlist_index {
+      app.selected_playlist_index = Some(display_idx);
+      return;
+    }
+
+    let mut target_folder: Option<usize> = None;
+    for item in &app.playlist_folder_items {
+      if let PlaylistFolderItem::Playlist { index, current_id } = item {
+        if let Some(playlist) = app.all_playlists.get(*index) {
+          if playlist.id.id() == playlist_id {
+            target_folder = Some(*current_id);
+            break;
+          }
+        }
+      }
+    }
+
+    if let Some(folder_id) = target_folder {
+      app.current_playlist_folder_id = folder_id;
+      let display_idx = app
+        .playlist_folder_items
+        .iter()
+        .filter(|item| app.is_playlist_item_visible_in_current_folder(item))
+        .enumerate()
+        .find_map(|(idx, item)| match item {
+          PlaylistFolderItem::Playlist { index, .. } => app
+            .all_playlists
+            .get(*index)
+            .filter(|playlist| playlist.id.id() == playlist_id)
+            .map(|_| idx),
+          PlaylistFolderItem::Folder(_) => None,
+        });
+      if let Some(idx) = display_idx {
+        app.selected_playlist_index = Some(idx);
+        return;
+      }
+    }
+  }
+
+  let visible_count = app.get_playlist_display_count();
+  if visible_count == 0 {
+    app.current_playlist_folder_id = 0;
+    let root_count = app.get_playlist_display_count();
+    app.selected_playlist_index = if root_count == 0 {
+      None
+    } else {
+      Some(preferred_selected_index.unwrap_or(0).min(root_count - 1))
+    };
+    return;
+  }
+
+  app.selected_playlist_index = Some(preferred_selected_index.unwrap_or(0).min(visible_count - 1));
+}
+
 /// Parse rootlist item URIs into a tree of PlaylistFolderNodes.
 /// URIs follow the pattern:
 /// - `spotify:playlist:ID` — a playlist
@@ -3338,7 +3431,7 @@ fn parse_rootlist_items(
         root = stack.pop().unwrap_or_default();
         root.push(PlaylistFolderNode {
           name: Some(name),
-          node_type: "folder".to_string(),
+          node_type: PlaylistFolderNodeType::Folder,
           uri: format!("spotify:folder:{}", group_id),
           children,
         });
@@ -3347,11 +3440,22 @@ fn parse_rootlist_items(
       // Regular item (playlist, etc.)
       root.push(PlaylistFolderNode {
         name: None,
-        node_type: "playlist".to_string(),
+        node_type: PlaylistFolderNodeType::Playlist,
         uri: uri.to_string(),
         children: Vec::new(),
       });
     }
+  }
+
+  while let Some((group_id, name)) = name_stack.pop() {
+    let children = std::mem::take(&mut root);
+    root = stack.pop().unwrap_or_default();
+    root.push(PlaylistFolderNode {
+      name: Some(name),
+      node_type: PlaylistFolderNodeType::Folder,
+      uri: format!("spotify:folder:{}", group_id),
+      children,
+    });
   }
 
   root
@@ -3387,8 +3491,8 @@ fn structurize_playlist_folders(
     used_playlist_indices: &mut std::collections::HashSet<usize>,
   ) {
     for node in nodes {
-      match node.node_type.as_str() {
-        "folder" => {
+      match node.node_type {
+        PlaylistFolderNodeType::Folder => {
           let folder_id = *next_folder_id;
           *next_folder_id += 1;
 
@@ -3418,7 +3522,7 @@ fn structurize_playlist_folders(
             used_playlist_indices,
           );
         }
-        "playlist" | _ => {
+        PlaylistFolderNodeType::Playlist => {
           // Extract playlist ID from URI (spotify:playlist:XXXXX)
           let playlist_id = node
             .uri
