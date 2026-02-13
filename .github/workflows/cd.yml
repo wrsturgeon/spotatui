@@ -143,6 +143,20 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read annotated tag message
+        id: tag_message
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        run: |
+          TAG_MESSAGE=$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)')
+          {
+            echo "message<<EOF"
+            echo "$TAG_MESSAGE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v7
@@ -155,7 +169,10 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
+            ${{ steps.tag_message.outputs.message }}
+
             ## Downloads
 
             - On **Windows 10/11 (64-bit)** → `spotatui-windows-x86_64.zip`
@@ -174,6 +191,7 @@ jobs:
     name: Publish to crates.io
     needs: release
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6
@@ -193,6 +211,7 @@ jobs:
     name: Publish to AUR
     needs: release
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6
@@ -259,6 +278,7 @@ jobs:
     name: Publish to AUR (spotatui-bin)
     needs: release
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6
@@ -355,6 +375,7 @@ jobs:
     name: Publish to winget
     needs: release
     runs-on: windows-latest
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
       - name: Submit to winget-pkgs
         uses: vedantmgoyal9/winget-releaser@v2
@@ -367,6 +388,7 @@ jobs:
     name: Publish to Homebrew
     needs: release
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v6

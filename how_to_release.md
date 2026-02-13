@@ -1,16 +1,31 @@
 # To create a release
 
-The releases are automated via GitHub actions, using [this configuration file](https://github.com/LargeModGames/spotatui/blob/master/.github/workflows/cd.yml).
+Releases are automated via GitHub Actions using [`.github/workflows/cd.yml`](https://github.com/LargeModGames/spotatui/blob/master/.github/workflows/cd.yml).
 
-The release is triggered by pushing a tag.
+The workflow runs when you push a tag.
 
-1. Bump the version in `Cargo.toml` and run the app to update the `lock` file
-1. Update the "Unreleased" header for the new version in the `CHANGELOG`. Use `### Added/Fixed/Changed` headers as appropriate
-1. Commit the changes and push them.
-1. Create a new tag e.g. `git tag -a v0.7.0` and add the CHANGELOG to the commit body
-1. Push the tag `git push --tags`
-1. Wait for the build to finish on the [Actions page](https://github.com/LargeModGames/spotatui/actions)
-1. This should publish to cargo as well
+## Stable release
+
+1. Bump the version in `Cargo.toml` and run the app to update `Cargo.lock`.
+2. Update the "Unreleased" header for the new version in `CHANGELOG.md` (`### Added/Fixed/Changed` as appropriate).
+3. Commit and push your changes.
+4. Create an annotated tag with a message (the tag message is shown on the GitHub release page):
+   - `git tag -a v0.7.0 -m "Release v0.7.0"`
+5. Push that specific tag:
+   - `git push origin v0.7.0`
+6. Wait for the build on the [Actions page](https://github.com/LargeModGames/spotatui/actions).
+7. Stable tags (no suffix) also trigger publish jobs (crates.io, AUR, winget, Homebrew).
+
+## Pre-release (recommended for canary testing)
+
+Use a SemVer pre-release tag like `v0.7.0-rc1` / `v0.7.0-beta.1`.
+
+1. Create an annotated pre-release tag with tester notes:
+   - `git tag -a v0.7.0-rc1 -m "RC1: canary build for Spotify API migration"`
+2. Push that specific tag:
+   - `git push origin v0.7.0-rc1`
+3. The workflow will automatically mark the GitHub release as `prerelease: true`.
+4. Pre-release tags skip ecosystem publishing jobs (crates.io, AUR, winget, Homebrew).
 
 ### Homebrew Packaging
 
