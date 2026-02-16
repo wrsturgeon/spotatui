@@ -21,6 +21,7 @@ use librespot_playback::{
   mixer::{softmixer::SoftMixer, Mixer, MixerConfig},
   player::{Player, PlayerEventChannel},
 };
+use log::info;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -200,7 +201,7 @@ impl StreamingPlayer {
     // Try to get credentials from cache first
     let (mut credentials, mut used_cached_credentials) =
       if let Some(cached_creds) = cache.credentials() {
-        println!("Using cached streaming credentials");
+        info!("Using cached streaming credentials");
         (cached_creds, true)
       } else {
         (request_streaming_oauth_credentials()?, false)
@@ -284,7 +285,7 @@ Set SPOTATUI_STREAMING_AUDIO_DEVICE to select an output device, or SPOTATUI_STRE
       volume_steps: 64,
     };
 
-    println!("Initializing Spirc with device_id={}", session.device_id());
+    info!("Initializing Spirc with device_id={}", session.device_id());
 
     let init_timeout_secs = std::env::var("SPOTATUI_STREAMING_INIT_TIMEOUT_SECS")
       .ok()
@@ -342,7 +343,7 @@ Set SPOTATUI_STREAMING_AUDIO_DEVICE to select an output device, or SPOTATUI_STRE
     // Spawn the Spirc task to run in the background
     tokio::spawn(spirc_task);
 
-    println!("Streaming connection established!");
+    info!("Streaming connection established!");
 
     Ok(Self {
       spirc,
