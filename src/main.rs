@@ -505,39 +505,38 @@ fn init_audio_backend() {
 fn init_audio_backend() {}
 
 fn setup_logging() -> anyhow::Result<()> {
-    // Get the current Process ID
-    let pid = std::process::id();
-    
-    // Construct the log file path using the PID
-    let log_dir = "/tmp/spotatui_logs/";
-    let log_path = format!("{}/spotatuilog{}", log_dir, pid);
+  // Get the current Process ID
+  let pid = std::process::id();
 
-    // Ensure the directory exists. If not, create.
-    if !std::path::Path::new(log_dir).exists() {
-        std::fs::create_dir_all(log_dir).map_err(|e| {
-            anyhow::anyhow!("Failed to create log directory {}: {}", log_dir, e)
-        })?;
-    }
-    // define format of log messages.
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Info)
-        .chain(fern::log_file(&log_path)?) // Use the dynamic path
-        .apply()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize logger: {}", e))?;
+  // Construct the log file path using the PID
+  let log_dir = "/tmp/spotatui_logs/";
+  let log_path = format!("{}spotatuilog{}", log_dir, pid);
 
-    // Print the location of log for user reference.
-    println!("Logging to: {}", log_path);
+  // Ensure the directory exists. If not, create.
+  if !std::path::Path::new(log_dir).exists() {
+    std::fs::create_dir_all(log_dir)
+      .map_err(|e| anyhow::anyhow!("Failed to create log directory {}: {}", log_dir, e))?;
+  }
+  // define format of log messages.
+  fern::Dispatch::new()
+    .format(|out, message, record| {
+      out.finish(format_args!(
+        "{}[{}][{}] {}",
+        chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+        record.target(),
+        record.level(),
+        message
+      ))
+    })
+    .level(log::LevelFilter::Info)
+    .chain(fern::log_file(&log_path)?) // Use the dynamic path
+    .apply()
+    .map_err(|e| anyhow::anyhow!("Failed to initialize logger: {}", e))?;
 
-    Ok(())
+  // Print the location of log for user reference.
+  println!("Logging to: {}", log_path);
+
+  Ok(())
 }
 
 fn install_panic_hook() {
@@ -825,11 +824,11 @@ of the app. Beware that this comes at a CPU cost!",
     match auth_result {
       Ok(()) => {
         if *client_id == NCSPOT_CLIENT_ID {
-          println!(
+          info!(
             "Using ncspot shared client ID. If it breaks in the future, configure fallback_client_id in client.yml."
           );
         } else {
-          println!("Using fallback client ID {}", client_id);
+          info!("Using fallback client ID {}", client_id);
         }
         client_config.client_id = client_id.clone();
         selected_redirect_uri = redirect_uri;
@@ -839,7 +838,7 @@ of the app. Beware that this comes at a CPU cost!",
       Err(e) => {
         last_auth_error = Some(e);
         if index + 1 < client_candidates.len() {
-          println!(
+          info!(
             "Authentication with client {} failed, trying fallback client...",
             client_id
           );
@@ -930,21 +929,33 @@ of the app. Beware that this comes at a CPU cost!",
 
       match init_result {
         Some(Ok(Ok(p))) => {
-          info!("native streaming player initialized as '{}'", p.device_name());
+          info!(
+            "native streaming player initialized as '{}'",
+            p.device_name()
+          );
           // Note: We don't activate() here - that's handled by AutoSelectStreamingDevice
           // which respects the user's saved device preference (e.g., spotifyd)
           Some(Arc::new(p))
         }
         Some(Ok(Err(e))) => {
-          info!("failed to initialize streaming: {} - falling back to web api", e);
+          info!(
+            "failed to initialize streaming: {} - falling back to web api",
+            e
+          );
           None
         }
         Some(Err(e)) => {
-          info!("streaming initialization panicked: {} - falling back to web api", e);
+          info!(
+            "streaming initialization panicked: {} - falling back to web api",
+            e
+          );
           None
         }
         None => {
-          info!("streaming initialization timed out after {}s - falling back to web api", init_timeout_secs); //you can adjust timeout using SPOTATUI_STREAMING_INIT_TIMEOUT_SECS environment variable
+          info!(
+            "streaming initialization timed out after {}s - falling back to web api",
+            init_timeout_secs
+          ); //you can adjust timeout using SPOTATUI_STREAMING_INIT_TIMEOUT_SECS environment variable
           None
         }
       }
@@ -1004,7 +1015,10 @@ of the app. Beware that this comes at a CPU cost!",
           Some(Arc::new(mgr))
         }
         Err(e) => {
-          info!("failed to initialize mpris: {} - media key control disabled", e);
+          info!(
+            "failed to initialize mpris: {} - media key control disabled",
+            e
+          );
           None
         }
       }
@@ -1030,7 +1044,10 @@ of the app. Beware that this comes at a CPU cost!",
             Some(Arc::new(mgr))
           }
           Err(e) => {
-            info!("failed to initialize macos media control: {} - media keys disabled", e);
+            info!(
+              "failed to initialize macos media control: {} - media keys disabled",
+              e
+            );
             None
           }
         }
