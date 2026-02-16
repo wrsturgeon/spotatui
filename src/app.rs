@@ -1040,7 +1040,10 @@ impl App {
   }
 
   pub fn seek_forwards(&mut self) {
-    info!("seeking forwards by {} ms", self.user_config.behavior.seek_milliseconds);
+    info!(
+      "seeking forwards by {} ms",
+      self.user_config.behavior.seek_milliseconds
+    );
     if let Some(CurrentPlaybackContext {
       item: Some(item), ..
     }) = &self.current_playback_context
@@ -1090,7 +1093,10 @@ impl App {
   }
 
   pub fn seek_backwards(&mut self) {
-    info!("seeking backwards by {} ms", self.user_config.behavior.seek_milliseconds);
+    info!(
+      "seeking backwards by {} ms",
+      self.user_config.behavior.seek_milliseconds
+    );
     let old_progress = match self.seek_ms {
       Some(seek_ms) => seek_ms,
       None => self.song_progress_ms,
@@ -1287,7 +1293,10 @@ impl App {
 
       if next_volume != current_volume {
         let next_volume_u8 = next_volume as u8;
-        info!("decreasing volume: {} -> {}", current_volume, next_volume_u8);
+        info!(
+          "decreasing volume: {} -> {}",
+          current_volume, next_volume_u8
+        );
 
         // Use native streaming player for instant control (bypasses event channel latency)
         #[cfg(feature = "streaming")]

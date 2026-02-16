@@ -496,6 +496,63 @@ async fn ensure_auth_token(
   Ok(())
 }
 
+#[cfg(feature = "streaming")]
+fn subscription_level_label(level: rspotify::model::SubscriptionLevel) -> &'static str {
+  match level {
+    rspotify::model::SubscriptionLevel::Premium => "premium",
+    rspotify::model::SubscriptionLevel::Free => "free",
+  }
+}
+
+#[cfg(feature = "streaming")]
+async fn account_supports_native_streaming(
+  spotify: &AuthCodePkceSpotify,
+) -> (bool, Option<&'static str>) {
+  match spotify.me().await {
+    Ok(user) => match user.product {
+      Some(rspotify::model::SubscriptionLevel::Premium) => (true, None),
+      Some(level) => {
+        let plan = subscription_level_label(level);
+        info!(
+          "spotify {} account detected: playback is unavailable (native streaming and Web API playback controls require premium)",
+          plan
+        );
+        println!(
+          "Spotify {} account detected. Playback is unavailable in spotatui: native streaming (librespot) and Web API playback controls both require Premium. Browsing/search/library views still work.",
+          plan
+        );
+        (
+          false,
+          Some("Spotify Free account: playback controls unavailable (Premium required)"),
+        )
+      }
+      None => {
+        info!("spotify account level unknown: native streaming disabled to avoid librespot exit");
+        println!(
+          "Could not determine Spotify subscription level. Native streaming is disabled to avoid startup exit. If this account is not Premium, playback controls will not work; browsing/search/library views still work."
+        );
+        (
+          false,
+          Some("Could not verify Spotify plan: native streaming disabled"),
+        )
+      }
+    },
+    Err(e) => {
+      info!(
+        "spotify account level check failed ({}); native streaming disabled to avoid librespot exit",
+        e
+      );
+      println!(
+        "Could not verify Spotify subscription level. Native streaming is disabled to avoid startup exit. If this account is not Premium, playback controls will not work; browsing/search/library views still work."
+      );
+      (
+        false,
+        Some("Could not verify Spotify plan: native streaming disabled"),
+      )
+    }
+  }
+}
+
 #[cfg(all(target_os = "linux", feature = "streaming"))]
 fn init_audio_backend() {
   alsa_silence::suppress_alsa_errors();
@@ -505,39 +562,38 @@ fn init_audio_backend() {
 fn init_audio_backend() {}
 
 fn setup_logging() -> anyhow::Result<()> {
-    // Get the current Process ID
-    let pid = std::process::id();
-    
-    // Construct the log file path using the PID
-    let log_dir = "/tmp/spotatui_logs/";
-    let log_path = format!("{}/spotatuilog{}", log_dir, pid);
+  // Get the current Process ID
+  let pid = std::process::id();
 
-    // Ensure the directory exists. If not, create.
-    if !std::path::Path::new(log_dir).exists() {
-        std::fs::create_dir_all(log_dir).map_err(|e| {
-            anyhow::anyhow!("Failed to create log directory {}: {}", log_dir, e)
-        })?;
-    }
-    // define format of log messages.
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Info)
-        .chain(fern::log_file(&log_path)?) // Use the dynamic path
-        .apply()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize logger: {}", e))?;
+  // Construct the log file path using the PID
+  let log_dir = "/tmp/spotatui_logs/";
+  let log_path = format!("{}/spotatuilog{}", log_dir, pid);
 
-    // Print the location of log for user reference.
-    println!("Logging to: {}", log_path);
+  // Ensure the directory exists. If not, create.
+  if !std::path::Path::new(log_dir).exists() {
+    std::fs::create_dir_all(log_dir)
+      .map_err(|e| anyhow::anyhow!("Failed to create log directory {}: {}", log_dir, e))?;
+  }
+  // define format of log messages.
+  fern::Dispatch::new()
+    .format(|out, message, record| {
+      out.finish(format_args!(
+        "{}[{}][{}] {}",
+        chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+        record.target(),
+        record.level(),
+        message
+      ))
+    })
+    .level(log::LevelFilter::Info)
+    .chain(fern::log_file(&log_path)?) // Use the dynamic path
+    .apply()
+    .map_err(|e| anyhow::anyhow!("Failed to initialize logger: {}", e))?;
 
-    Ok(())
+  // Print the location of log for user reference.
+  println!("Logging to: {}", log_path);
+
+  Ok(())
 }
 
 fn install_panic_hook() {
@@ -895,9 +951,23 @@ of the app. Beware that this comes at a CPU cost!",
   // Launch the UI (async)
   } else {
     info!("launching interactive terminal ui");
+    #[cfg(feature = "streaming")]
+    let (streaming_supported_for_account, streaming_startup_status_message) =
+      if client_config.enable_streaming {
+        account_supports_native_streaming(&spotify).await
+      } else {
+        (false, None)
+      };
+
+    #[cfg(feature = "streaming")]
+    if let Some(message) = streaming_startup_status_message {
+      let mut app_mut = app.lock().await;
+      app_mut.set_status_message(message, 12);
+    }
+
     // Initialize streaming player if enabled
     #[cfg(feature = "streaming")]
-    let streaming_player = if client_config.enable_streaming {
+    let streaming_player = if client_config.enable_streaming && streaming_supported_for_account {
       info!("initializing native streaming player");
       let streaming_config = player::StreamingConfig {
         device_name: client_config.streaming_device_name.clone(),
@@ -930,21 +1000,33 @@ of the app. Beware that this comes at a CPU cost!",
 
       match init_result {
         Some(Ok(Ok(p))) => {
-          info!("native streaming player initialized as '{}'", p.device_name());
+          info!(
+            "native streaming player initialized as '{}'",
+            p.device_name()
+          );
           // Note: We don't activate() here - that's handled by AutoSelectStreamingDevice
           // which respects the user's saved device preference (e.g., spotifyd)
           Some(Arc::new(p))
         }
         Some(Ok(Err(e))) => {
-          info!("failed to initialize streaming: {} - falling back to web api", e);
+          info!(
+            "failed to initialize streaming: {} - falling back to web api",
+            e
+          );
           None
         }
         Some(Err(e)) => {
-          info!("streaming initialization panicked: {} - falling back to web api", e);
+          info!(
+            "streaming initialization panicked: {} - falling back to web api",
+            e
+          );
           None
         }
         None => {
-          info!("streaming initialization timed out after {}s - falling back to web api", init_timeout_secs); //you can adjust timeout using SPOTATUI_STREAMING_INIT_TIMEOUT_SECS environment variable
+          info!(
+            "streaming initialization timed out after {}s - falling back to web api",
+            init_timeout_secs
+          ); //you can adjust timeout using SPOTATUI_STREAMING_INIT_TIMEOUT_SECS environment variable
           None
         }
       }
@@ -1004,7 +1086,10 @@ of the app. Beware that this comes at a CPU cost!",
           Some(Arc::new(mgr))
         }
         Err(e) => {
-          info!("failed to initialize mpris: {} - media key control disabled", e);
+          info!(
+            "failed to initialize mpris: {} - media key control disabled",
+            e
+          );
           None
         }
       }
@@ -1030,7 +1115,10 @@ of the app. Beware that this comes at a CPU cost!",
             Some(Arc::new(mgr))
           }
           Err(e) => {
-            info!("failed to initialize macos media control: {} - media keys disabled", e);
+            info!(
+              "failed to initialize macos media control: {} - media keys disabled",
+              e
+            );
             None
           }
         }
