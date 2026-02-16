@@ -116,6 +116,16 @@
         "design",
         "code"
       ]
+    },
+    {
+      "login": "AFE123x",
+      "name": "Arun Felix",
+      "avatar_url": "https://avatars.githubusercontent.com/u/121839885?v=4",
+      "profile": "https://github.com/AFE123x",
+      "contributions": [
+        "code",
+        "bug"
+      ]
     }
   ],
   "contributorsPerLine": 7,
