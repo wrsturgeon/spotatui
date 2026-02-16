@@ -62,6 +62,7 @@ use crossterm::{
   terminal::SetTitle,
   ExecutableCommand,
 };
+use log::info;
 use network::{IoEvent, Network};
 use ratatui::backend::Backend;
 use redirect_uri::redirect_uri_web_server;
@@ -331,7 +332,7 @@ async fn save_token_to_file(spotify: &AuthCodePkceSpotify, path: &PathBuf) -> Re
   if let Some(ref token) = *token_lock {
     let token_json = serde_json::to_string_pretty(token)?;
     fs::write(path, token_json)?;
-    println!("Token saved to {}", path.display());
+    info!("token cached to {}", path.display());
   }
   Ok(())
 }
@@ -348,7 +349,7 @@ async fn load_token_from_file(spotify: &AuthCodePkceSpotify, path: &PathBuf) -> 
   *token_lock = Some(token);
   drop(token_lock);
 
-  println!("Found cached authentication token");
+  info!("authentication token loaded from cache");
   Ok(true)
 }
 
@@ -405,11 +406,11 @@ async fn ensure_auth_token(
   let mut needs_auth = match load_token_from_file(spotify, token_cache_path).await {
     Ok(true) => false,
     Ok(false) => {
-      println!("No cached token found, need to authenticate");
+      info!("no cached token found, authentication required");
       true
     }
     Err(e) => {
-      println!("Failed to read token cache: {}", e);
+      info!("failed to read token cache: {}", e);
       true
     }
   };
@@ -426,11 +427,11 @@ async fn ensure_auth_token(
         || err_text_lower.contains("token expired");
 
       if should_reauth {
-        println!("Cached token is no longer valid. Re-authentication required.");
+        info!("cached authentication token is invalid, re-authentication required");
         if token_cache_path.exists() {
           if let Err(remove_err) = fs::remove_file(token_cache_path) {
-            println!(
-              "Failed to remove stale token cache {}: {}",
+            info!(
+              "failed to remove stale token cache {}: {}",
               token_cache_path.display(),
               remove_err
             );
@@ -444,6 +445,7 @@ async fn ensure_auth_token(
   }
 
   if needs_auth {
+    info!("starting spotify authentication flow on port {}", auth_port);
     let auth_url = spotify.get_authorize_url(None)?;
 
     println!("\nAttempting to open this URL in your browser:");
@@ -462,9 +464,10 @@ async fn ensure_auth_token(
     match redirect_uri_web_server(auth_port) {
       Ok(url) => {
         if let Some(code) = spotify.parse_response_code(&url) {
+          info!("authorization code received, requesting access token");
           spotify.request_token(&code).await?;
           save_token_to_file(spotify, token_cache_path).await?;
-          println!("✓ Successfully authenticated with Spotify!");
+          info!("successfully authenticated with spotify");
         } else {
           return Err(anyhow!(
             "Failed to parse authorization code from callback URL"
@@ -472,14 +475,17 @@ async fn ensure_auth_token(
         }
       }
       Err(()) => {
+        info!("redirect uri web server failed, using manual authentication");
         println!("Starting webserver failed. Continuing with manual authentication");
         println!("Please open this URL in your browser: {}", auth_url);
         println!("Enter the URL you were redirected to: ");
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         if let Some(code) = spotify.parse_response_code(&input) {
+          info!("authorization code received from manual input, requesting access token");
           spotify.request_token(&code).await?;
           save_token_to_file(spotify, token_cache_path).await?;
+          info!("successfully authenticated with spotify");
         } else {
           return Err(anyhow!("Failed to parse authorization code from input URL"));
         }
@@ -497,6 +503,42 @@ fn init_audio_backend() {
 
 #[cfg(not(all(target_os = "linux", feature = "streaming")))]
 fn init_audio_backend() {}
+
+fn setup_logging() -> anyhow::Result<()> {
+    // Get the current Process ID
+    let pid = std::process::id();
+    
+    // Construct the log file path using the PID
+    let log_dir = "/tmp/spotatui_logs/";
+    let log_path = format!("{}/spotatuilog{}", log_dir, pid);
+
+    // Ensure the directory exists. If not, create.
+    if !std::path::Path::new(log_dir).exists() {
+        std::fs::create_dir_all(log_dir).map_err(|e| {
+            anyhow::anyhow!("Failed to create log directory {}: {}", log_dir, e)
+        })?;
+    }
+    // define format of log messages.
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Info)
+        .chain(fern::log_file(&log_path)?) // Use the dynamic path
+        .apply()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize logger: {}", e))?;
+
+    // Print the location of log for user reference.
+    println!("Logging to: {}", log_path);
+
+    Ok(())
+}
 
 fn install_panic_hook() {
   let default_hook = panic::take_hook();
@@ -540,9 +582,13 @@ fn install_panic_hook() {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+  setup_logging()?;
+  info!("spotatui {} starting up", env!("CARGO_PKG_VERSION"));
   init_audio_backend();
+  info!("audio backend initialized");
 
   install_panic_hook();
+  info!("panic hook configured");
 
   let mut clap_app = ClapApp::new(env!("CARGO_PKG_NAME"))
     .version(env!("CARGO_PKG_VERSION"))
@@ -631,6 +677,7 @@ of the app. Beware that this comes at a CPU cost!",
     user_config.path_to_config.replace(path);
   }
   user_config.load_config()?;
+  info!("user config loaded successfully");
   let initial_shuffle_enabled = user_config.behavior.shuffle_enabled;
 
   if let Some(tick_rate) = matches
@@ -646,6 +693,7 @@ of the app. Beware that this comes at a CPU cost!",
 
   let mut client_config = ClientConfig::new();
   client_config.load_config()?;
+  info!("client authentication config loaded");
 
   let reconfigure_auth = matches.get_flag("reconfigure-auth");
 
@@ -822,6 +870,7 @@ of the app. Beware that this comes at a CPU cost!",
   drop(token_lock); // Release the lock
 
   let (sync_io_tx, sync_io_rx) = std::sync::mpsc::channel::<IoEvent>();
+  info!("app state initialized");
 
   // Initialise app state
   let app = Arc::new(Mutex::new(App::new(
@@ -832,6 +881,7 @@ of the app. Beware that this comes at a CPU cost!",
 
   // Work with the cli (not really async)
   if let Some(cmd) = matches.subcommand_name() {
+    info!("running in cli mode with command: {}", cmd);
     // Save, because we checked if the subcommand is present at runtime
     let m = matches.subcommand_matches(cmd).unwrap();
     #[cfg(feature = "streaming")]
@@ -844,9 +894,11 @@ of the app. Beware that this comes at a CPU cost!",
     );
   // Launch the UI (async)
   } else {
+    info!("launching interactive terminal ui");
     // Initialize streaming player if enabled
     #[cfg(feature = "streaming")]
     let streaming_player = if client_config.enable_streaming {
+      info!("initializing native streaming player");
       let streaming_config = player::StreamingConfig {
         device_name: client_config.streaming_device_name.clone(),
         bitrate: client_config.streaming_bitrate,
@@ -878,26 +930,21 @@ of the app. Beware that this comes at a CPU cost!",
 
       match init_result {
         Some(Ok(Ok(p))) => {
-          println!("Streaming player initialized as '{}'", p.device_name());
+          info!("native streaming player initialized as '{}'", p.device_name());
           // Note: We don't activate() here - that's handled by AutoSelectStreamingDevice
           // which respects the user's saved device preference (e.g., spotifyd)
           Some(Arc::new(p))
         }
         Some(Ok(Err(e))) => {
-          println!("Failed to initialize streaming: {}", e);
-          println!("Falling back to API-based playback control");
+          info!("failed to initialize streaming: {} - falling back to web api", e);
           None
         }
         Some(Err(e)) => {
-          println!("Streaming initialization panicked: {}", e);
-          println!("Falling back to API-based playback control");
+          info!("streaming initialization panicked: {} - falling back to web api", e);
           None
         }
         None => {
-          println!(
-            "Streaming initialization timed out after {}s; falling back to API-based playback control (set SPOTATUI_STREAMING_INIT_TIMEOUT_SECS to adjust)",
-            init_timeout_secs
-          );
+          info!("streaming initialization timed out after {}s - falling back to web api", init_timeout_secs); //you can adjust timeout using SPOTATUI_STREAMING_INIT_TIMEOUT_SECS environment variable
           None
         }
       }
@@ -907,7 +954,7 @@ of the app. Beware that this comes at a CPU cost!",
 
     #[cfg(feature = "streaming")]
     if streaming_player.is_some() {
-      println!("Native playback enabled - 'spotatui' is available as a Spotify Connect device");
+      info!("native playback enabled - spotatui is available as a spotify connect device");
     }
 
     // Store streaming player reference in App for direct control (bypasses event channel)
@@ -953,14 +1000,11 @@ of the app. Beware that this comes at a CPU cost!",
     let mpris_manager: Option<Arc<mpris::MprisManager>> = if streaming_player.is_some() {
       match mpris::MprisManager::new() {
         Ok(mgr) => {
-          println!("MPRIS D-Bus interface registered - media keys and playerctl enabled");
+          info!("mpris d-bus interface registered - media keys and playerctl enabled");
           Some(Arc::new(mgr))
         }
         Err(e) => {
-          println!(
-            "Failed to initialize MPRIS: {} - media key control disabled",
-            e
-          );
+          info!("failed to initialize mpris: {} - media key control disabled", e);
           None
         }
       }
@@ -982,14 +1026,11 @@ of the app. Beware that this comes at a CPU cost!",
       if streaming_player.is_some() {
         match macos_media::MacMediaManager::new() {
           Ok(mgr) => {
-            println!("macOS Now Playing interface registered - media keys enabled");
+            info!("macos now playing interface registered - media keys enabled");
             Some(Arc::new(mgr))
           }
           Err(e) => {
-            println!(
-              "Failed to initialize macOS media control: {} - media keys disabled",
-              e
-            );
+            info!("failed to initialize macos media control: {} - media keys disabled", e);
             None
           }
         }
@@ -999,9 +1040,20 @@ of the app. Beware that this comes at a CPU cost!",
 
     #[cfg(feature = "discord-rpc")]
     let discord_rpc_manager: DiscordRpcHandle = if user_config.behavior.enable_discord_rpc {
-      resolve_discord_app_id(&user_config)
+      match resolve_discord_app_id(&user_config)
         .and_then(|app_id| discord_rpc::DiscordRpcManager::new(app_id).ok())
+      {
+        Some(mgr) => {
+          info!("discord rich presence enabled");
+          Some(mgr)
+        }
+        None => {
+          info!("discord rich presence failed to initialize");
+          None
+        }
+      }
     } else {
+      info!("discord rich presence disabled");
       None
     };
     #[cfg(not(feature = "discord-rpc"))]
@@ -1057,6 +1109,7 @@ of the app. Beware that this comes at a CPU cost!",
     if let Some(ref player) = streaming_player {
       let event_rx = player.get_event_channel();
       let app_for_events = Arc::clone(&app);
+      info!("spawning native player event handler");
       #[cfg(all(feature = "mpris", target_os = "linux"))]
       tokio::spawn(async move {
         handle_player_events(
@@ -1081,6 +1134,7 @@ of the app. Beware that this comes at a CPU cost!",
     }
 
     let cloned_app = Arc::clone(&app);
+    info!("spawning spotify network event handler");
     tokio::spawn(async move {
       #[cfg(feature = "streaming")]
       let mut network = Network::new(spotify, client_config, &app, streaming_player_clone);
@@ -1154,6 +1208,7 @@ of the app. Beware that this comes at a CPU cost!",
       start_tokio(sync_io_rx, &mut network).await;
     });
     // The UI must run in the "main" thread
+    info!("starting terminal ui event loop");
     #[cfg(all(feature = "streaming", feature = "mpris", target_os = "linux"))]
     start_ui(
       user_config,
@@ -1773,6 +1828,7 @@ async fn start_ui(
   mpris_manager: Option<Arc<mpris::MprisManager>>,
   discord_rpc_manager: DiscordRpcHandle,
 ) -> Result<()> {
+  info!("ui thread initialized");
   #[cfg(not(feature = "discord-rpc"))]
   let _ = discord_rpc_manager;
   // Terminal initialization
@@ -2069,6 +2125,7 @@ async fn start_ui(
   _mpris_manager: Option<()>,
   discord_rpc_manager: DiscordRpcHandle,
 ) -> Result<()> {
+  info!("ui thread initialized");
   #[cfg(not(feature = "discord-rpc"))]
   let _ = discord_rpc_manager;
   #[cfg(not(feature = "streaming"))]

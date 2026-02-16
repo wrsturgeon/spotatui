@@ -1669,6 +1669,11 @@ fn build_changelog_lines(
   let max_width = usize::from(max_width);
 
   lines.push(Line::from(Span::styled(
+    format!("Log located in /tmp/spotatui_logs/spotatuilog{}",std::process::id()),
+    Style::default().fg(theme.hint),
+  )));
+
+  lines.push(Line::from(Span::styled(
     "Please report any bugs or missing features to https://github.com/LargeModGames/spotatui",
     Style::default().fg(theme.hint),
   )));

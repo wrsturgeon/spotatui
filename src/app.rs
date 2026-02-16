@@ -33,6 +33,7 @@ use std::{
 };
 
 use arboard::Clipboard;
+use log::info;
 
 pub const LIBRARY_OPTIONS: [&str; 6] = [
   "Discover",
@@ -1039,6 +1040,7 @@ impl App {
   }
 
   pub fn seek_forwards(&mut self) {
+    info!("seeking forwards by {} ms", self.user_config.behavior.seek_milliseconds);
     if let Some(CurrentPlaybackContext {
       item: Some(item), ..
     }) = &self.current_playback_context
@@ -1088,6 +1090,7 @@ impl App {
   }
 
   pub fn seek_backwards(&mut self) {
+    info!("seeking backwards by {} ms", self.user_config.behavior.seek_milliseconds);
     let old_progress = match self.seek_ms {
       Some(seek_ms) => seek_ms,
       None => self.song_progress_ms,
@@ -1251,6 +1254,7 @@ impl App {
       );
 
       if next_volume != current_volume {
+        info!("increasing volume: {} -> {}", current_volume, next_volume);
         // Use native streaming player for instant control (bypasses event channel latency)
         #[cfg(feature = "streaming")]
         if self.is_native_streaming_active_for_playback() {
@@ -1283,6 +1287,7 @@ impl App {
 
       if next_volume != current_volume {
         let next_volume_u8 = next_volume as u8;
+        info!("decreasing volume: {} -> {}", current_volume, next_volume_u8);
 
         // Use native streaming player for instant control (bypasses event channel latency)
         #[cfg(feature = "streaming")]
@@ -1307,6 +1312,7 @@ impl App {
   }
 
   pub fn handle_error(&mut self, e: anyhow::Error) {
+    info!("error occurred: {}", e);
     self.push_navigation_stack(RouteId::Error, ActiveBlock::Error);
     self.api_error = e.to_string();
   }
@@ -1410,6 +1416,7 @@ impl App {
   }
 
   pub fn previous_track(&mut self) {
+    info!("playing previous track or restarting current track");
     if self.song_progress_ms >= 3_000 {
       // If more than 3 seconds into the song, restart from beginning
       #[cfg(feature = "streaming")]
@@ -1451,6 +1458,7 @@ impl App {
   }
 
   pub fn next_track(&mut self) {
+    info!("skipping to next track");
     // Use native streaming player for instant control (bypasses event channel latency)
     #[cfg(feature = "streaming")]
     if self.is_native_streaming_active_for_playback() {
@@ -1478,6 +1486,7 @@ impl App {
   // The navigation_stack actually only controls the large block to the right of `library` and
   // `playlists`
   pub fn push_navigation_stack(&mut self, next_route_id: RouteId, next_active_block: ActiveBlock) {
+    info!("navigating to {:?}", next_route_id);
     if !self
       .navigation_stack
       .last()
@@ -1493,6 +1502,7 @@ impl App {
   }
 
   pub fn pop_navigation_stack(&mut self) -> Option<Route> {
+    info!("navigating back");
     if self.navigation_stack.len() == 1 {
       None
     } else {
@@ -1524,6 +1534,7 @@ impl App {
   }
 
   pub fn copy_song_url(&mut self) {
+    info!("copying song url to clipboard");
     let clipboard = match &mut self.clipboard {
       Some(ctx) => ctx,
       None => return,
@@ -1561,6 +1572,7 @@ impl App {
   }
 
   pub fn copy_album_url(&mut self) {
+    info!("copying album url to clipboard");
     let clipboard = match &mut self.clipboard {
       Some(ctx) => ctx,
       None => return,
@@ -1683,6 +1695,7 @@ impl App {
   pub fn shuffle(&mut self) {
     if let Some(context) = &self.current_playback_context.clone() {
       let new_shuffle_state = !context.shuffle_state;
+      info!("toggling shuffle: {}", new_shuffle_state);
 
       // Use native streaming player for instant control (bypasses event channel latency)
       #[cfg(feature = "streaming")]
@@ -1736,6 +1749,7 @@ impl App {
   }
 
   pub fn current_user_saved_album_delete(&mut self, block: ActiveBlock) {
+    info!("removing album from saved albums");
     match block {
       ActiveBlock::SearchResultBlock => {
         if let Some(albums) = &self.search_results.albums {
@@ -1769,6 +1783,7 @@ impl App {
   }
 
   pub fn current_user_saved_album_add(&mut self, block: ActiveBlock) {
+    info!("adding album to saved albums");
     match block {
       ActiveBlock::SearchResultBlock => {
         if let Some(albums) = &self.search_results.albums {
@@ -1842,6 +1857,7 @@ impl App {
   }
 
   pub fn user_unfollow_artists(&mut self, block: ActiveBlock) {
+    info!("unfollowing artist");
     match block {
       ActiveBlock::SearchResultBlock => {
         if let Some(artists) = &self.search_results.artists {
@@ -1878,6 +1894,7 @@ impl App {
   }
 
   pub fn user_follow_artists(&mut self, block: ActiveBlock) {
+    info!("following artist");
     match block {
       ActiveBlock::SearchResultBlock => {
         if let Some(artists) = &self.search_results.artists {
@@ -1904,6 +1921,7 @@ impl App {
   }
 
   pub fn user_follow_playlist(&mut self) {
+    info!("following playlist");
     if let SearchResult {
       playlists: Some(ref playlists),
       selected_playlists_index: Some(selected_index),
@@ -1923,6 +1941,7 @@ impl App {
   }
 
   pub fn user_unfollow_playlist(&mut self) {
+    info!("unfollowing playlist");
     if let (Some(selected_index), Some(user)) = (self.selected_playlist_index, &self.user) {
       if let Some(PlaylistFolderItem::Playlist { index, .. }) =
         self.get_playlist_display_item_at(selected_index)
@@ -1940,6 +1959,7 @@ impl App {
   }
 
   pub fn user_unfollow_playlist_search_result(&mut self) {
+    info!("unfollowing playlist from search results");
     if let (Some(playlists), Some(selected_index), Some(user)) = (
       &self.search_results.playlists,
       self.search_results.selected_playlists_index,
@@ -1956,6 +1976,7 @@ impl App {
   }
 
   pub fn user_follow_show(&mut self, block: ActiveBlock) {
+    info!("following show");
     match block {
       ActiveBlock::SearchResultBlock => {
         if let Some(shows) = &self.search_results.shows {
@@ -1985,6 +2006,7 @@ impl App {
   }
 
   pub fn user_unfollow_show(&mut self, block: ActiveBlock) {
+    info!("unfollowing show");
     match block {
       ActiveBlock::Podcasts => {
         if let Some(shows) = self.library.saved_shows.get_results(None) {
@@ -2023,6 +2045,7 @@ impl App {
   /// Toggle the audio analysis visualization view
   /// This now uses local FFT analysis instead of the deprecated Spotify API
   pub fn get_audio_analysis(&mut self) {
+    info!("entering audio analysis view");
     if self.get_current_route().id != RouteId::Analysis {
       // Enter visualization mode
       self.push_navigation_stack(RouteId::Analysis, ActiveBlock::Analysis);
@@ -2033,6 +2056,7 @@ impl App {
   pub fn repeat(&mut self) {
     if let Some(context) = &self.current_playback_context.clone() {
       let current_repeat_state = context.repeat_state;
+      info!("toggling repeat mode: {:?}", current_repeat_state);
 
       // Use native streaming player for instant control (bypasses event channel latency)
       #[cfg(feature = "streaming")]
