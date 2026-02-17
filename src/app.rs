@@ -150,6 +150,7 @@ pub enum ActiveBlock {
   BasicView,
   Dialog(DialogContext),
   UpdatePrompt,
+  AnnouncementPrompt,
   Settings,
   SortMenu,
 }
@@ -174,8 +175,25 @@ pub enum RouteId {
   Recommendations,
   Dialog,
   UpdatePrompt,
+  AnnouncementPrompt,
   Settings,
   HelpMenu,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum AnnouncementLevel {
+  Info,
+  Warning,
+  Critical,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Announcement {
+  pub id: String,
+  pub title: String,
+  pub body: String,
+  pub level: AnnouncementLevel,
+  pub url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -553,6 +571,8 @@ pub struct App {
   pub confirm: bool,
   pub update_available: Option<UpdateInfo>,
   pub update_prompt_acknowledged: bool,
+  pub active_announcement: Option<Announcement>,
+  pub pending_announcements: Vec<Announcement>,
   pub lyrics: Option<Vec<(u128, String)>>,
   pub lyrics_status: LyricsStatus,
   pub global_song_count: Option<u64>,
@@ -738,6 +758,8 @@ impl Default for App {
       confirm: false,
       update_available: None,
       update_prompt_acknowledged: false,
+      active_announcement: None,
+      pending_announcements: Vec::new(),
       lyrics: None,
       lyrics_status: LyricsStatus::default(),
       global_song_count: None,
@@ -807,6 +829,50 @@ impl App {
         // TODO: handle error
       };
     }
+  }
+
+  pub fn enqueue_announcements(&mut self, announcements: Vec<Announcement>) {
+    if announcements.is_empty() {
+      return;
+    }
+
+    let mut existing_ids: HashSet<String> = self
+      .pending_announcements
+      .iter()
+      .map(|announcement| announcement.id.clone())
+      .collect();
+
+    if let Some(active) = &self.active_announcement {
+      existing_ids.insert(active.id.clone());
+    }
+
+    let mut incoming = announcements
+      .into_iter()
+      .filter(|announcement| existing_ids.insert(announcement.id.clone()))
+      .collect::<Vec<Announcement>>();
+
+    if self.active_announcement.is_none() {
+      if let Some(first) = incoming.first().cloned() {
+        self.active_announcement = Some(first);
+        incoming.remove(0);
+      }
+    }
+
+    self.pending_announcements.extend(incoming);
+  }
+
+  pub fn dismiss_active_announcement(&mut self) -> Option<String> {
+    let dismissed_id = self
+      .active_announcement
+      .take()
+      .map(|announcement| announcement.id);
+
+    if let Some(next_announcement) = self.pending_announcements.first().cloned() {
+      self.active_announcement = Some(next_announcement);
+      self.pending_announcements.remove(0);
+    }
+
+    dismissed_id
   }
 
   // Close the IO channel to allow the network thread to exit gracefully
@@ -2211,6 +2277,25 @@ impl App {
           value: SettingValue::Bool(self.user_config.behavior.enable_discord_rpc),
         },
         SettingItem {
+          id: "behavior.enable_announcements".to_string(),
+          name: "Remote Announcements".to_string(),
+          description: "Show one-time announcements from remote JSON feed".to_string(),
+          value: SettingValue::Bool(self.user_config.behavior.enable_announcements),
+        },
+        SettingItem {
+          id: "behavior.announcement_feed_url".to_string(),
+          name: "Announcements Feed URL".to_string(),
+          description: "Remote JSON feed URL (HTTPS)".to_string(),
+          value: SettingValue::String(
+            self
+              .user_config
+              .behavior
+              .announcement_feed_url
+              .clone()
+              .unwrap_or_default(),
+          ),
+        },
+        SettingItem {
           id: "behavior.liked_icon".to_string(),
           name: "Liked Icon".to_string(),
           description: "Icon for liked songs".to_string(),
@@ -2534,6 +2619,21 @@ impl App {
         "behavior.enable_discord_rpc" => {
           if let SettingValue::Bool(v) = &setting.value {
             self.user_config.behavior.enable_discord_rpc = *v;
+          }
+        }
+        "behavior.enable_announcements" => {
+          if let SettingValue::Bool(v) = &setting.value {
+            self.user_config.behavior.enable_announcements = *v;
+          }
+        }
+        "behavior.announcement_feed_url" => {
+          if let SettingValue::String(v) = &setting.value {
+            let trimmed = v.trim();
+            self.user_config.behavior.announcement_feed_url = if trimmed.is_empty() {
+              None
+            } else {
+              Some(trimmed.to_string())
+            };
           }
         }
         "behavior.liked_icon" => {

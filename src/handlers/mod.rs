@@ -1,6 +1,7 @@
 mod album_list;
 mod album_tracks;
 mod analysis;
+mod announcement_prompt;
 mod artist;
 mod artists;
 mod basic_view;
@@ -103,7 +104,10 @@ pub fn handle_app(key: Key, app: &mut App) {
       app.push_navigation_stack(RouteId::Settings, ActiveBlock::Settings);
     }
     Key::Char('W') => match app.get_current_route().active_block {
-      ActiveBlock::Input | ActiveBlock::Dialog(_) | ActiveBlock::UpdatePrompt => {
+      ActiveBlock::Input
+      | ActiveBlock::Dialog(_)
+      | ActiveBlock::UpdatePrompt
+      | ActiveBlock::AnnouncementPrompt => {
         handle_block_events(key, app);
       }
       _ => playbar::add_currently_playing_track_to_playlist(app),
@@ -185,6 +189,9 @@ fn handle_block_events(key: Key, app: &mut App) {
     ActiveBlock::UpdatePrompt => {
       update_prompt::handler(key, app);
     }
+    ActiveBlock::AnnouncementPrompt => {
+      announcement_prompt::handler(key, app);
+    }
     ActiveBlock::Settings => {
       settings::handler(key, app);
     }
@@ -220,6 +227,8 @@ fn handle_escape(app: &mut App) {
     ActiveBlock::SelectDevice | ActiveBlock::Analysis => {}
     // Update prompt must be dismissed with Enter/Esc, not global escape
     ActiveBlock::UpdatePrompt => {}
+    // Announcement prompt must be dismissed with Enter/Esc, not global escape
+    ActiveBlock::AnnouncementPrompt => {}
     // Sort menu closes on escape
     ActiveBlock::SortMenu => {
       app.sort_menu_visible = false;

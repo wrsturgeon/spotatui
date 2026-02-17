@@ -1,12 +1,13 @@
 use crate::app::{
-  ActiveBlock, AlbumTableContext, App, Artist, ArtistBlock, EpisodeTableContext, PlaylistFolder,
-  PlaylistFolderItem, PlaylistFolderNode, PlaylistFolderNodeType, RouteId, ScrollableResultPages,
-  SelectedAlbum, SelectedFullAlbum, SelectedFullShow, SelectedShow, TrackTableContext,
+  ActiveBlock, AlbumTableContext, Announcement, AnnouncementLevel, App, Artist, ArtistBlock,
+  EpisodeTableContext, PlaylistFolder, PlaylistFolderItem, PlaylistFolderNode,
+  PlaylistFolderNodeType, RouteId, ScrollableResultPages, SelectedAlbum, SelectedFullAlbum,
+  SelectedFullShow, SelectedShow, TrackTableContext,
 };
 use crate::config::ClientConfig;
 use crate::ui::util::create_artist_string;
 use anyhow::anyhow;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use reqwest::Method;
 use rspotify::{
   model::{
@@ -28,6 +29,8 @@ use rspotify::{
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
 use std::{
+  collections::HashSet,
+  env,
   sync::{Arc, OnceLock},
   time::{Duration, Instant},
 };
@@ -106,6 +109,7 @@ pub enum IoEvent {
   AddItemToQueue(PlayableId<'static>),
   IncrementGlobalSongCount,
   FetchGlobalSongCount,
+  FetchAnnouncements,
   GetLyrics(String, String, f64),
   /// Start playback from the user's saved tracks collection (Liked Songs)
   /// Takes the absolute position in the collection to start from
@@ -146,6 +150,25 @@ struct LrcResponse {
 #[allow(dead_code)]
 struct GlobalSongCountResponse {
   count: u64,
+}
+
+#[derive(Deserialize, Debug)]
+struct AnnouncementFeedResponse {
+  #[allow(dead_code)]
+  version: Option<u8>,
+  #[serde(default)]
+  announcements: Vec<AnnouncementRecord>,
+}
+
+#[derive(Deserialize, Debug)]
+struct AnnouncementRecord {
+  id: String,
+  title: Option<String>,
+  body: String,
+  level: Option<String>,
+  url: Option<String>,
+  starts_at: Option<String>,
+  ends_at: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -427,6 +450,9 @@ impl Network {
       IoEvent::FetchGlobalSongCount => {
         self.fetch_global_song_count().await;
       }
+      IoEvent::FetchAnnouncements => {
+        self.fetch_announcements().await;
+      }
       IoEvent::GetLyrics(track, artist, duration) => {
         self.get_lyrics(track, artist, duration).await;
       }
@@ -615,13 +641,15 @@ impl Network {
           items.retain(|item| !item.is_null());
         }
 
-        if map.contains_key("snapshot_id") && map.contains_key("owner") && map.contains_key("id") {
-          if !map.contains_key("tracks") {
-            if let Some(items_obj) = map.get("items").cloned() {
-              map.insert("tracks".to_string(), items_obj);
-            } else {
-              map.insert("tracks".to_string(), json!({ "href": "", "total": 0 }));
-            }
+        if map.contains_key("snapshot_id")
+          && map.contains_key("owner")
+          && map.contains_key("id")
+          && !map.contains_key("tracks")
+        {
+          if let Some(items_obj) = map.get("items").cloned() {
+            map.insert("tracks".to_string(), items_obj);
+          } else {
+            map.insert("tracks".to_string(), json!({ "href": "", "total": 0 }));
           }
         }
 
@@ -3212,13 +3240,15 @@ impl Network {
           spotify,
           app,
           limit,
-          first_page_count,
-          total,
-          first_page_items,
-          refresh_generation,
-          preferred_playlist_id,
-          preferred_folder_id,
-          preferred_selected_index,
+          (
+            first_page_count,
+            total,
+            first_page_items,
+            refresh_generation,
+            preferred_playlist_id,
+            preferred_folder_id,
+            preferred_selected_index,
+          ),
           streaming_player,
         )
         .await;
@@ -3231,13 +3261,15 @@ impl Network {
           spotify,
           app,
           limit,
-          first_page_count,
-          total,
-          first_page_items,
-          refresh_generation,
-          preferred_playlist_id,
-          preferred_folder_id,
-          preferred_selected_index,
+          (
+            first_page_count,
+            total,
+            first_page_items,
+            refresh_generation,
+            preferred_playlist_id,
+            preferred_folder_id,
+            preferred_selected_index,
+          ),
         )
         .await;
       });
@@ -3250,15 +3282,27 @@ impl Network {
     spotify: AuthCodePkceSpotify,
     app: Arc<Mutex<App>>,
     limit: u32,
-    first_page_count: u32,
-    total: u32,
-    mut all_playlists: Vec<rspotify::model::playlist::SimplifiedPlaylist>,
-    refresh_generation: u64,
-    preferred_playlist_id: Option<String>,
-    preferred_folder_id: usize,
-    preferred_selected_index: Option<usize>,
+    task_state: (
+      u32,
+      u32,
+      Vec<rspotify::model::playlist::SimplifiedPlaylist>,
+      u64,
+      Option<String>,
+      usize,
+      Option<usize>,
+    ),
     #[cfg(feature = "streaming")] streaming_player: Option<Arc<StreamingPlayer>>,
   ) {
+    let (
+      first_page_count,
+      total,
+      mut all_playlists,
+      refresh_generation,
+      preferred_playlist_id,
+      preferred_folder_id,
+      preferred_selected_index,
+    ) = task_state;
+
     let max_playlists: u32 = 10_000;
 
     // Streaming: spawn remaining pages fetch concurrently, await rootlist first
@@ -3772,6 +3816,172 @@ impl Network {
   #[cfg(not(feature = "telemetry"))]
   async fn fetch_global_song_count(&self) {
     // No-op when telemetry feature is disabled
+  }
+
+  async fn fetch_announcements(&self) {
+    const MAX_ANNOUNCEMENT_FEED_BYTES: usize = 256 * 1024;
+    const ANNOUNCEMENTS_ENV_KEY: &str = "SPOTATUI_ANNOUNCEMENTS_URL";
+    const DEFAULT_ANNOUNCEMENTS_URL: &str =
+      "https://raw.githubusercontent.com/LargeModGames/spotatui/main/announcements.json";
+
+    let (announcements_enabled, feed_url, seen_ids) = {
+      let app = self.app.lock().await;
+      (
+        app.user_config.behavior.enable_announcements,
+        app.user_config.behavior.announcement_feed_url.clone(),
+        app.user_config.behavior.seen_announcement_ids.clone(),
+      )
+    };
+
+    if !announcements_enabled {
+      return;
+    }
+
+    let env_feed_url = env::var(ANNOUNCEMENTS_ENV_KEY)
+      .ok()
+      .map(|v| v.trim().to_string())
+      .filter(|v| !v.is_empty());
+
+    let resolved_url = env_feed_url
+      .or(feed_url)
+      .filter(|url| !url.trim().is_empty())
+      .unwrap_or_else(|| DEFAULT_ANNOUNCEMENTS_URL.to_string());
+
+    if !resolved_url.starts_with("https://") {
+      return;
+    }
+
+    let client = match reqwest::Client::builder()
+      .timeout(std::time::Duration::from_secs(5))
+      .build()
+    {
+      Ok(client) => client,
+      Err(_) => return,
+    };
+
+    let response = match client
+      .get(&resolved_url)
+      .header(reqwest::header::ACCEPT, "application/json")
+      .send()
+      .await
+    {
+      Ok(response) => response,
+      Err(_) => return,
+    };
+
+    if !response.status().is_success() {
+      return;
+    }
+
+    if response
+      .content_length()
+      .is_some_and(|length| length > MAX_ANNOUNCEMENT_FEED_BYTES as u64)
+    {
+      return;
+    }
+
+    let body = match response.bytes().await {
+      Ok(bytes) if bytes.len() <= MAX_ANNOUNCEMENT_FEED_BYTES => bytes,
+      _ => return,
+    };
+
+    let feed: AnnouncementFeedResponse = match serde_json::from_slice(&body) {
+      Ok(feed) => feed,
+      Err(_) => return,
+    };
+
+    let now = Utc::now();
+    let seen_ids = seen_ids.into_iter().collect::<HashSet<String>>();
+    let mut feed_ids_seen = HashSet::new();
+    let mut announcements = Vec::new();
+
+    for record in feed.announcements {
+      let id = record.id.trim().to_string();
+      if id.is_empty() || seen_ids.contains(&id) || !feed_ids_seen.insert(id.clone()) {
+        continue;
+      }
+
+      let body = record.body.trim().to_string();
+      if body.is_empty() {
+        continue;
+      }
+
+      let starts_at = match record
+        .starts_at
+        .as_deref()
+        .map(Self::parse_announcement_datetime)
+      {
+        Some(Some(value)) => Some(value),
+        Some(None) => continue,
+        None => None,
+      };
+
+      let ends_at = match record
+        .ends_at
+        .as_deref()
+        .map(Self::parse_announcement_datetime)
+      {
+        Some(Some(value)) => Some(value),
+        Some(None) => continue,
+        None => None,
+      };
+
+      if let Some(start) = starts_at {
+        if now < start {
+          continue;
+        }
+      }
+
+      if let Some(end) = ends_at {
+        if now > end {
+          continue;
+        }
+      }
+
+      let level = Self::parse_announcement_level(record.level.as_deref());
+      let url = record
+        .url
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty() && url.starts_with("https://"));
+
+      announcements.push(Announcement {
+        id,
+        title: record
+          .title
+          .map(|title| title.trim().to_string())
+          .filter(|title| !title.is_empty())
+          .unwrap_or_else(|| "Announcement".to_string()),
+        body,
+        level,
+        url,
+      });
+    }
+
+    if announcements.is_empty() {
+      return;
+    }
+
+    let mut app = self.app.lock().await;
+    let had_active_announcement = app.active_announcement.is_some();
+    app.enqueue_announcements(announcements);
+
+    if !had_active_announcement && app.active_announcement.is_some() {
+      app.push_navigation_stack(RouteId::AnnouncementPrompt, ActiveBlock::AnnouncementPrompt);
+    }
+  }
+
+  fn parse_announcement_datetime(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+      .ok()
+      .map(|parsed| parsed.with_timezone(&Utc))
+  }
+
+  fn parse_announcement_level(value: Option<&str>) -> AnnouncementLevel {
+    match value.map(|level| level.trim().to_ascii_lowercase()) {
+      Some(level) if level == "warning" || level == "warn" => AnnouncementLevel::Warning,
+      Some(level) if level == "critical" || level == "error" => AnnouncementLevel::Critical,
+      _ => AnnouncementLevel::Info,
+    }
   }
 
   async fn get_lyrics(&mut self, track_name: String, artist_name: String, duration_sec: f64) {

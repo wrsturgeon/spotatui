@@ -4,8 +4,8 @@ pub mod settings;
 pub mod util;
 use super::{
   app::{
-    ActiveBlock, AlbumTableContext, App, ArtistBlock, DialogContext, EpisodeTableContext,
-    RecommendationsContext, RouteId, SearchResultBlock, LIBRARY_OPTIONS,
+    ActiveBlock, AlbumTableContext, AnnouncementLevel, App, ArtistBlock, DialogContext,
+    EpisodeTableContext, RecommendationsContext, RouteId, SearchResultBlock, LIBRARY_OPTIONS,
   },
   banner::BANNER,
 };
@@ -314,6 +314,7 @@ pub fn draw_routes(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
     RouteId::BasicView => {} // This is handled as a "full screen" route in main.rs
     RouteId::Dialog => {} // This is handled in the draw_dialog function in mod.rs
     RouteId::UpdatePrompt => {} // This is handled as a "full screen" route in main.rs
+    RouteId::AnnouncementPrompt => {} // This is handled as a "full screen" route in main.rs
     RouteId::Settings => {} // This is handled as a "full screen" route in main.rs
     RouteId::HelpMenu => {} // This is handled as a "full screen" route in main.rs
   };
@@ -2696,6 +2697,66 @@ pub fn draw_update_prompt(f: &mut Frame<'_>, app: &App) {
 
     f.render_widget(paragraph, rect);
   }
+}
+
+pub fn draw_announcement_prompt(f: &mut Frame<'_>, app: &App) {
+  let Some(announcement) = &app.active_announcement else {
+    return;
+  };
+
+  let width = std::cmp::min(f.area().width.saturating_sub(4), 74);
+  let height = std::cmp::min(f.area().height.saturating_sub(4), 16);
+  let rect = f
+    .area()
+    .centered(Constraint::Length(width), Constraint::Length(height));
+
+  f.render_widget(Clear, rect);
+
+  let (level_label, accent_color) = match announcement.level {
+    AnnouncementLevel::Info => ("INFO", app.user_config.theme.active),
+    AnnouncementLevel::Warning => ("WARNING", app.user_config.theme.hint),
+    AnnouncementLevel::Critical => ("CRITICAL", app.user_config.theme.error_text),
+  };
+
+  let mut text = vec![
+    Line::from(Span::styled(
+      format!("{}  {}", level_label, announcement.title),
+      Style::default().add_modifier(Modifier::BOLD),
+    )),
+    Line::from(""),
+  ];
+
+  for line in announcement.body.lines() {
+    text.push(Line::from(line.to_string()));
+  }
+
+  if let Some(url) = &announcement.url {
+    text.push(Line::from(""));
+    text.push(Line::from(Span::styled(
+      format!("More: {}", url),
+      Style::default().add_modifier(Modifier::ITALIC),
+    )));
+  }
+
+  text.push(Line::from(""));
+  text.push(Line::from(Span::styled(
+    "[Press ENTER or ESC to dismiss]",
+    Style::default().fg(app.user_config.theme.inactive),
+  )));
+
+  let paragraph = Paragraph::new(text)
+    .style(app.user_config.theme.base_style())
+    .alignment(Alignment::Left)
+    .wrap(Wrap { trim: false })
+    .block(
+      Block::default()
+        .borders(Borders::ALL)
+        .style(app.user_config.theme.base_style())
+        .border_style(Style::default().fg(accent_color))
+        .title(" Announcement "),
+    );
+
+  f.render_widget(paragraph, rect);
 }
 
 /// Draw the sort menu popup overlay

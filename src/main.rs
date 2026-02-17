@@ -75,7 +75,7 @@ use std::{
   fs,
   io::{self, stdout, Write},
   panic,
-  path::PathBuf,
+  path::{Path, PathBuf},
   sync::{atomic::AtomicU64, Arc},
   time::SystemTime,
 };
@@ -353,7 +353,7 @@ async fn load_token_from_file(spotify: &AuthCodePkceSpotify, path: &PathBuf) -> 
   Ok(true)
 }
 
-fn token_cache_path_for_client(base_path: &PathBuf, client_id: &str) -> PathBuf {
+fn token_cache_path_for_client(base_path: &Path, client_id: &str) -> PathBuf {
   let suffix = &client_id[..8.min(client_id.len())];
   let stem = base_path
     .file_stem()
@@ -494,6 +494,63 @@ async fn ensure_auth_token(
   }
 
   Ok(())
+}
+
+#[cfg(feature = "streaming")]
+fn subscription_level_label(level: rspotify::model::SubscriptionLevel) -> &'static str {
+  match level {
+    rspotify::model::SubscriptionLevel::Premium => "premium",
+    rspotify::model::SubscriptionLevel::Free => "free",
+  }
+}
+
+#[cfg(feature = "streaming")]
+async fn account_supports_native_streaming(
+  spotify: &AuthCodePkceSpotify,
+) -> (bool, Option<&'static str>) {
+  match spotify.me().await {
+    Ok(user) => match user.product {
+      Some(rspotify::model::SubscriptionLevel::Premium) => (true, None),
+      Some(level) => {
+        let plan = subscription_level_label(level);
+        info!(
+          "spotify {} account detected: playback is unavailable (native streaming and Web API playback controls require premium)",
+          plan
+        );
+        println!(
+          "Spotify {} account detected. Playback is unavailable in spotatui: native streaming (librespot) and Web API playback controls both require Premium. Browsing/search/library views still work.",
+          plan
+        );
+        (
+          false,
+          Some("Spotify Free account: playback controls unavailable (Premium required)"),
+        )
+      }
+      None => {
+        info!("spotify account level unknown: native streaming disabled to avoid librespot exit");
+        println!(
+          "Could not determine Spotify subscription level. Native streaming is disabled to avoid startup exit. If this account is not Premium, playback controls will not work; browsing/search/library views still work."
+        );
+        (
+          false,
+          Some("Could not verify Spotify plan: native streaming disabled"),
+        )
+      }
+    },
+    Err(e) => {
+      info!(
+        "spotify account level check failed ({}); native streaming disabled to avoid librespot exit",
+        e
+      );
+      println!(
+        "Could not verify Spotify subscription level. Native streaming is disabled to avoid startup exit. If this account is not Premium, playback controls will not work; browsing/search/library views still work."
+      );
+      (
+        false,
+        Some("Could not verify Spotify plan: native streaming disabled"),
+      )
+    }
+  }
 }
 
 #[cfg(all(target_os = "linux", feature = "streaming"))]
@@ -894,9 +951,23 @@ of the app. Beware that this comes at a CPU cost!",
   // Launch the UI (async)
   } else {
     info!("launching interactive terminal ui");
+    #[cfg(feature = "streaming")]
+    let (streaming_supported_for_account, streaming_startup_status_message) =
+      if client_config.enable_streaming {
+        account_supports_native_streaming(&spotify).await
+      } else {
+        (false, None)
+      };
+
+    #[cfg(feature = "streaming")]
+    if let Some(message) = streaming_startup_status_message {
+      let mut app_mut = app.lock().await;
+      app_mut.set_status_message(message, 12);
+    }
+
     // Initialize streaming player if enabled
     #[cfg(feature = "streaming")]
-    let streaming_player = if client_config.enable_streaming {
+    let streaming_player = if client_config.enable_streaming && streaming_supported_for_account {
       info!("initializing native streaming player");
       let streaming_config = player::StreamingConfig {
         device_name: client_config.streaming_device_name.clone(),
@@ -1948,6 +2019,9 @@ async fn start_ui(
         ActiveBlock::UpdatePrompt => {
           ui::draw_update_prompt(f, &app);
         }
+        ActiveBlock::AnnouncementPrompt => {
+          ui::draw_announcement_prompt(f, &app);
+        }
         ActiveBlock::Settings => {
           ui::settings::draw_settings(f, &app);
         }
@@ -1995,7 +2069,21 @@ async fn start_ui(
         if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
-          if app.get_current_route().active_block != ActiveBlock::Input {
+          if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
+            if let Some(dismissed_id) = app.dismiss_active_announcement() {
+              app.user_config.mark_announcement_seen(dismissed_id);
+              if let Err(error) = app.user_config.save_config() {
+                app.handle_error(anyhow!(
+                  "Failed to persist dismissed announcement: {}",
+                  error
+                ));
+              }
+            }
+
+            if app.active_announcement.is_none() {
+              app.pop_navigation_stack();
+            }
+          } else if app.get_current_route().active_block != ActiveBlock::Input {
             // Go back through navigation stack when not in search input mode and exit the app if there are no more places to back to
 
             let pop_result = match app.pop_navigation_stack() {
@@ -2098,6 +2186,7 @@ async fn start_ui(
       if app.user_config.behavior.enable_global_song_count {
         app.dispatch(IoEvent::FetchGlobalSongCount);
       }
+      app.dispatch(IoEvent::FetchAnnouncements);
       app.help_docs_size = ui::help::get_help_docs(&app.user_config.keys).len() as u32;
 
       is_first_render = false;
@@ -2224,6 +2313,7 @@ async fn start_ui(
           ActiveBlock::Analysis => ui::audio_analysis::draw(f, &app),
           ActiveBlock::BasicView => ui::draw_basic_view(f, &app),
           ActiveBlock::UpdatePrompt => ui::draw_update_prompt(f, &app),
+          ActiveBlock::AnnouncementPrompt => ui::draw_announcement_prompt(f, &app),
           ActiveBlock::Settings => ui::settings::draw_settings(f, &app),
           _ => ui::draw_main_layout(f, &app),
         }
@@ -2263,7 +2353,21 @@ async fn start_ui(
         if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
-          if app.get_current_route().active_block != ActiveBlock::Input {
+          if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
+            if let Some(dismissed_id) = app.dismiss_active_announcement() {
+              app.user_config.mark_announcement_seen(dismissed_id);
+              if let Err(error) = app.user_config.save_config() {
+                app.handle_error(anyhow!(
+                  "Failed to persist dismissed announcement: {}",
+                  error
+                ));
+              }
+            }
+
+            if app.active_announcement.is_none() {
+              app.pop_navigation_stack();
+            }
+          } else if app.get_current_route().active_block != ActiveBlock::Input {
             let pop_result = match app.pop_navigation_stack() {
               Some(ref x) if x.id == RouteId::Search => app.pop_navigation_stack(),
               Some(x) => Some(x),
@@ -2345,6 +2449,7 @@ async fn start_ui(
       if app.user_config.behavior.enable_global_song_count {
         app.dispatch(IoEvent::FetchGlobalSongCount);
       }
+      app.dispatch(IoEvent::FetchAnnouncements);
       app.help_docs_size = ui::help::get_help_docs(&app.user_config.keys).len() as u32;
       is_first_render = false;
     }

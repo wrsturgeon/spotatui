@@ -103,6 +103,8 @@ You may be asked to re-authenticate with Spotify the first time.
 
 ## Installation
 
+> **Important:** Spotify Premium is required for playback features (native streaming and Web API playback controls).
+
 ```bash
 # Homebrew (macOS/Linux)
 brew tap LargeModGames/spotatui
@@ -200,6 +202,11 @@ This app uses the [Web API](https://developer.spotify.com/documentation/web-api/
 3. **Spotifyd** - Use a lightweight alternative like [spotifyd](https://github.com/Spotifyd/spotifyd)
 
 If you want to play tracks, Spotify requires that you have a Premium account.
+
+With a free account, spotatui can still authenticate and browse your library/search results, but playback actions (play/pause/seek/transfer) will not work in either:
+
+- Native Streaming (librespot)
+- Web API playback control mode
 
 ### Deprecated Spotify API Features
 

@@ -572,6 +572,9 @@ pub struct BehaviorConfigString {
   pub enable_global_song_count: Option<bool>,
   pub enable_discord_rpc: Option<bool>,
   pub discord_rpc_client_id: Option<String>,
+  pub enable_announcements: Option<bool>,
+  pub announcement_feed_url: Option<String>,
+  pub seen_announcement_ids: Option<Vec<String>>,
   pub shuffle_enabled: Option<bool>,
   pub liked_icon: Option<String>,
   pub shuffle_icon: Option<String>,
@@ -595,6 +598,9 @@ pub struct BehaviorConfig {
   pub enable_global_song_count: bool,
   pub enable_discord_rpc: bool,
   pub discord_rpc_client_id: Option<String>,
+  pub enable_announcements: bool,
+  pub announcement_feed_url: Option<String>,
+  pub seen_announcement_ids: Vec<String>,
   pub shuffle_enabled: bool,
   pub liked_icon: String,
   pub shuffle_icon: String,
@@ -678,6 +684,9 @@ impl UserConfig {
         enable_global_song_count: true,
         enable_discord_rpc: true,
         discord_rpc_client_id: None,
+        enable_announcements: true,
+        announcement_feed_url: None,
+        seen_announcement_ids: Vec::new(),
         shuffle_enabled: false,
         liked_icon: "♥".to_string(),
         shuffle_icon: "🔀".to_string(),
@@ -863,6 +872,27 @@ impl UserConfig {
       self.behavior.enable_discord_rpc = enable_discord_rpc;
     }
 
+    if let Some(enable_announcements) = behavior_config.enable_announcements {
+      self.behavior.enable_announcements = enable_announcements;
+    }
+
+    if let Some(announcement_feed_url) = behavior_config.announcement_feed_url {
+      let trimmed = announcement_feed_url.trim();
+      self.behavior.announcement_feed_url = if trimmed.is_empty() {
+        None
+      } else {
+        Some(trimmed.to_string())
+      };
+    }
+
+    if let Some(seen_announcement_ids) = behavior_config.seen_announcement_ids {
+      self.behavior.seen_announcement_ids = seen_announcement_ids
+        .into_iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+    }
+
     if let Some(discord_rpc_client_id) = behavior_config.discord_rpc_client_id {
       self.behavior.discord_rpc_client_id = Some(discord_rpc_client_id);
     }
@@ -931,6 +961,9 @@ impl UserConfig {
       enable_global_song_count: Some(self.behavior.enable_global_song_count),
       enable_discord_rpc: Some(self.behavior.enable_discord_rpc),
       discord_rpc_client_id: self.behavior.discord_rpc_client_id.clone(),
+      enable_announcements: Some(self.behavior.enable_announcements),
+      announcement_feed_url: self.behavior.announcement_feed_url.clone(),
+      seen_announcement_ids: Some(self.behavior.seen_announcement_ids.clone()),
       shuffle_enabled: Some(self.behavior.shuffle_enabled),
       liked_icon: Some(self.behavior.liked_icon.clone()),
       shuffle_icon: Some(self.behavior.shuffle_icon.clone()),
@@ -1066,6 +1099,22 @@ impl UserConfig {
 
   pub fn padded_liked_icon(&self) -> String {
     format!("{} ", &self.behavior.liked_icon)
+  }
+
+  pub fn mark_announcement_seen(&mut self, announcement_id: impl Into<String>) {
+    let id = announcement_id.into();
+    if id.is_empty() {
+      return;
+    }
+
+    if !self
+      .behavior
+      .seen_announcement_ids
+      .iter()
+      .any(|seen| seen == &id)
+    {
+      self.behavior.seen_announcement_ids.push(id);
+    }
   }
 }
 
