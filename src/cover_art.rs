@@ -71,11 +71,7 @@ impl CoverArt {
   pub fn render(&self, f: &mut Frame, area: Rect) {
     let mut lock = self.state.lock().unwrap();
     if let Some(sp) = lock.as_mut() {
-      f.render_stateful_widget(
-        StatefulImage::new().resize(Resize::Fit(None)),
-        area,
-        sp,
-      );
+      f.render_stateful_widget(StatefulImage::new().resize(Resize::Fit(None)), area, sp);
     }
   }
 }
