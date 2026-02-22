@@ -596,29 +596,29 @@ impl PlaybackNetwork for Network {
   async fn transfert_playback_to_device(&mut self, device_id: String, persist_device_id: bool) {
     #[cfg(feature = "streaming")]
     {
-      let is_native_transfer = self.streaming_player.as_ref().is_some_and(|p| {
-        // Check if the target device ID matches our native device ID
-        let app_guard = self.app.try_lock();
-        if let Ok(app) = app_guard {
-          if let Some(native_id) = &app.native_device_id {
-            if native_id == &device_id {
-              return true;
-            }
-          }
-        }
-        // Fallback: check name (less reliable if multiple devices have same name)
-        // But for transferring TO a device, we usually use ID.
-        // If device_id matches the player's name (unlikely for ID, but possible if mixed up)
-        p.device_name() == device_id
-      });
+      let is_native_transfer = if let Some(ref player) = self.streaming_player {
+        let native_name = player.device_name().to_lowercase();
+        let app = self.app.lock().await;
+        let matches_cached_device = app.devices.as_ref().is_some_and(|payload| {
+          payload
+            .devices
+            .iter()
+            .any(|d| d.id.as_ref() == Some(&device_id) && d.name.to_lowercase() == native_name)
+        });
+        matches_cached_device || app.native_device_id.as_ref() == Some(&device_id)
+      } else {
+        false
+      };
 
       if is_native_transfer {
         if let Some(ref player) = self.streaming_player {
           let _ = player.transfer(None);
+          player.activate();
           let mut app = self.app.lock().await;
           app.is_streaming_active = true;
           app.native_activation_pending = true;
           app.last_device_activation = Some(Instant::now());
+          app.instant_since_last_current_playback_poll = Instant::now() - Duration::from_secs(6);
           return;
         }
       }
@@ -647,24 +647,62 @@ impl PlaybackNetwork for Network {
 
   #[cfg(feature = "streaming")]
   async fn auto_select_streaming_device(&mut self, device_name: String, persist_device_id: bool) {
-    let mut devices = match self.spotify.device().await {
-      Ok(d) => d,
-      Err(_) => return,
-    };
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // Find device by name
-    let target_device = devices
-      .iter_mut()
-      .find(|d| d.name.to_lowercase() == device_name.to_lowercase());
+    if let Some(ref player) = self.streaming_player {
+      let activation_time = Instant::now();
+      let should_transfer = {
+        let app = self.app.lock().await;
+        let recent_activation = app
+          .last_device_activation
+          .is_some_and(|instant| instant.elapsed() < Duration::from_secs(5));
+        !app.native_activation_pending && !app.is_streaming_active && !recent_activation
+      };
 
-    if let Some(device) = target_device {
-      if let Some(id) = &device.id {
-        self
-          .transfert_playback_to_device(id.clone(), persist_device_id)
-          .await;
-        // Update native device ID in app state
+      {
         let mut app = self.app.lock().await;
-        app.native_device_id = Some(id.clone());
+        app.is_streaming_active = true;
+        app.native_activation_pending = true;
+        app.last_device_activation = Some(activation_time);
+        app.instant_since_last_current_playback_poll = activation_time - Duration::from_secs(6);
+      }
+
+      if should_transfer {
+        let _ = player.transfer(None);
+      }
+      player.activate();
+
+      {
+        let mut app = self.app.lock().await;
+        app.is_streaming_active = true;
+        app.native_activation_pending = false;
+        app.last_device_activation = Some(activation_time);
+        app.instant_since_last_current_playback_poll = activation_time - Duration::from_secs(6);
+      }
+
+      for attempt in 0..2 {
+        if attempt > 0 {
+          tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+
+        match self.spotify.device().await {
+          Ok(devices) => {
+            if let Some(device) = devices
+              .iter()
+              .find(|d| d.name.to_lowercase() == device_name.to_lowercase())
+            {
+              if let Some(id) = &device.id {
+                if persist_device_id {
+                  let _ = self.client_config.set_device_id(id.clone());
+                }
+                let mut app = self.app.lock().await;
+                app.native_device_id = Some(id.clone());
+                return;
+              }
+            }
+          }
+          Err(_) => continue,
+        }
       }
     }
   }
