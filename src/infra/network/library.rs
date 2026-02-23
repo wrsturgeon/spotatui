@@ -172,6 +172,10 @@ pub trait LibraryNetwork {
 // Private helper methods
 impl Network {
   async fn library_contains_uris(&self, uris: &[String]) -> anyhow::Result<Vec<bool>> {
+    if uris.is_empty() {
+      return Ok(Vec::new());
+    }
+
     spotify_get_typed_compat_for(
       &self.spotify,
       "me/library/contains",
@@ -181,11 +185,16 @@ impl Network {
   }
 
   async fn library_save_uris(&self, uris: &[String]) -> anyhow::Result<()> {
+    if uris.is_empty() {
+      return Ok(());
+    }
+
+    let query = vec![("uris", uris.join(","))];
     spotify_api_request_json_for(
       &self.spotify,
       Method::PUT,
       "me/library",
-      &[],
+      &query,
       Some(json!({ "uris": uris })),
     )
     .await?;
@@ -193,11 +202,16 @@ impl Network {
   }
 
   async fn library_remove_uris(&self, uris: &[String]) -> anyhow::Result<()> {
+    if uris.is_empty() {
+      return Ok(());
+    }
+
+    let query = vec![("uris", uris.join(","))];
     spotify_api_request_json_for(
       &self.spotify,
       Method::DELETE,
       "me/library",
-      &[],
+      &query,
       Some(json!({ "uris": uris })),
     )
     .await?;
