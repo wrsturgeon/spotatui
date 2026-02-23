@@ -2058,6 +2058,9 @@ async fn start_ui(
         ActiveBlock::AnnouncementPrompt => {
           ui::draw_announcement_prompt(f, &app);
         }
+        ActiveBlock::ExitPrompt => {
+          ui::draw_exit_prompt(f, &app);
+        }
         ActiveBlock::Settings => {
           ui::settings::draw_settings(f, &app);
         }
@@ -2102,7 +2105,21 @@ async fn start_ui(
 
         // To avoid swallowing the global key presses `q` and `-` make a special
         // case for the input handler
-        if current_active_block == ActiveBlock::Input {
+        if current_active_block == ActiveBlock::ExitPrompt {
+          match key {
+            Key::Enter | Key::Char('y') | Key::Char('Y') => {
+              app.close_io_channel();
+              break;
+            }
+            Key::Esc | Key::Char('n') | Key::Char('N') => {
+              app.pop_navigation_stack();
+            }
+            _ if key == app.user_config.keys.back => {
+              app.pop_navigation_stack();
+            }
+            _ => {}
+          }
+        } else if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
           if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
@@ -2128,8 +2145,7 @@ async fn start_ui(
               None => None,
             };
             if pop_result.is_none() {
-              app.close_io_channel();
-              break; // Exit application
+              app.push_navigation_stack(RouteId::ExitPrompt, ActiveBlock::ExitPrompt);
             }
           }
         } else {
@@ -2350,6 +2366,7 @@ async fn start_ui(
           ActiveBlock::BasicView => ui::draw_basic_view(f, &app),
           ActiveBlock::UpdatePrompt => ui::draw_update_prompt(f, &app),
           ActiveBlock::AnnouncementPrompt => ui::draw_announcement_prompt(f, &app),
+          ActiveBlock::ExitPrompt => ui::draw_exit_prompt(f, &app),
           ActiveBlock::Settings => ui::settings::draw_settings(f, &app),
           _ => ui::draw_main_layout(f, &app),
         }
@@ -2386,7 +2403,21 @@ async fn start_ui(
 
         let current_active_block = app.get_current_route().active_block;
 
-        if current_active_block == ActiveBlock::Input {
+        if current_active_block == ActiveBlock::ExitPrompt {
+          match key {
+            Key::Enter | Key::Char('y') | Key::Char('Y') => {
+              app.close_io_channel();
+              break;
+            }
+            Key::Esc | Key::Char('n') | Key::Char('N') => {
+              app.pop_navigation_stack();
+            }
+            _ if key == app.user_config.keys.back => {
+              app.pop_navigation_stack();
+            }
+            _ => {}
+          }
+        } else if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
           if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
@@ -2410,8 +2441,7 @@ async fn start_ui(
               None => None,
             };
             if pop_result.is_none() {
-              app.close_io_channel();
-              break;
+              app.push_navigation_stack(RouteId::ExitPrompt, ActiveBlock::ExitPrompt);
             }
           }
         } else {

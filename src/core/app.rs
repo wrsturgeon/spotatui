@@ -151,6 +151,7 @@ pub enum ActiveBlock {
   Dialog(DialogContext),
   UpdatePrompt,
   AnnouncementPrompt,
+  ExitPrompt,
   Settings,
   SortMenu,
 }
@@ -176,6 +177,7 @@ pub enum RouteId {
   Dialog,
   UpdatePrompt,
   AnnouncementPrompt,
+  ExitPrompt,
   Settings,
   HelpMenu,
 }

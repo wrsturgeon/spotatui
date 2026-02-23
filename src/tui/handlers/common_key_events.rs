@@ -137,6 +137,7 @@ pub fn handle_right_event(app: &mut App) {
       RouteId::Dialog => {}
       RouteId::UpdatePrompt => {}
       RouteId::AnnouncementPrompt => {}
+      RouteId::ExitPrompt => {}
       RouteId::Settings => {}
       RouteId::HelpMenu => {}
     },

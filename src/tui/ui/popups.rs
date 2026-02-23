@@ -399,6 +399,42 @@ pub fn draw_announcement_prompt(f: &mut Frame<'_>, app: &App) {
   f.render_widget(paragraph, rect);
 }
 
+pub fn draw_exit_prompt(f: &mut Frame<'_>, app: &App) {
+  let width = std::cmp::min(f.area().width.saturating_sub(4), 56);
+  let height = 8;
+  let rect = f
+    .area()
+    .centered(Constraint::Length(width), Constraint::Length(height));
+
+  f.render_widget(Clear, rect);
+
+  let text = vec![
+    Line::from(Span::styled(
+      "Exit spotatui?",
+      Style::default().add_modifier(Modifier::BOLD),
+    )),
+    Line::from(""),
+    Line::from("Press Y for Yes or N for No"),
+    Line::from(Span::styled(
+      "[ENTER = Yes, ESC = No]",
+      Style::default().fg(app.user_config.theme.inactive),
+    )),
+  ];
+
+  let paragraph = Paragraph::new(text)
+    .style(app.user_config.theme.base_style())
+    .alignment(Alignment::Center)
+    .block(
+      Block::default()
+        .borders(Borders::ALL)
+        .style(app.user_config.theme.base_style())
+        .border_style(Style::default().fg(app.user_config.theme.active))
+        .title(" Confirm Exit "),
+    );
+
+  f.render_widget(paragraph, rect);
+}
+
 /// Draw the sort menu popup overlay
 pub fn draw_sort_menu(f: &mut Frame<'_>, app: &App) {
   if !app.sort_menu_visible {

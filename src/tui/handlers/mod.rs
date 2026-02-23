@@ -107,7 +107,8 @@ pub fn handle_app(key: Key, app: &mut App) {
       ActiveBlock::Input
       | ActiveBlock::Dialog(_)
       | ActiveBlock::UpdatePrompt
-      | ActiveBlock::AnnouncementPrompt => {
+      | ActiveBlock::AnnouncementPrompt
+      | ActiveBlock::ExitPrompt => {
         handle_block_events(key, app);
       }
       _ => playbar::add_currently_playing_track_to_playlist(app),
@@ -192,6 +193,7 @@ fn handle_block_events(key: Key, app: &mut App) {
     ActiveBlock::AnnouncementPrompt => {
       announcement_prompt::handler(key, app);
     }
+    ActiveBlock::ExitPrompt => {}
     ActiveBlock::Settings => {
       settings::handler(key, app);
     }
@@ -229,6 +231,7 @@ fn handle_escape(app: &mut App) {
     ActiveBlock::UpdatePrompt => {}
     // Announcement prompt must be dismissed with Enter/Esc, not global escape
     ActiveBlock::AnnouncementPrompt => {}
+    ActiveBlock::ExitPrompt => {}
     // Sort menu closes on escape
     ActiveBlock::SortMenu => {
       app.sort_menu_visible = false;
