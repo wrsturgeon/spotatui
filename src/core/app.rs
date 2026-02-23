@@ -630,6 +630,8 @@ pub struct App {
   pub artist_sort: SortState,
   /// Animation frame counter for the "Liked" heart flash effect (0-10)
   pub liked_song_animation_frame: Option<u8>,
+  /// Global animation tick counter, incremented every tick (~62 FPS)
+  pub animation_tick: u64,
   /// Ephemeral status message shown in the playbar
   pub status_message: Option<String>,
   /// When to clear the status message
@@ -792,6 +794,7 @@ impl Default for App {
       album_sort: SortState::new(),
       artist_sort: SortState::new(),
       liked_song_animation_frame: None,
+      animation_tick: 0,
       status_message: None,
       status_message_expires_at: None,
       pending_track_table_selection: None,
@@ -1044,6 +1047,9 @@ impl App {
   }
 
   pub fn update_on_tick(&mut self) {
+    // Increment global animation tick (wraps after ~9.4 quintillion ticks, effectively never)
+    self.animation_tick = self.animation_tick.wrapping_add(1);
+
     if let Some(expires_at) = self.status_message_expires_at {
       if Instant::now() >= expires_at {
         self.status_message = None;

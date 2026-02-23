@@ -253,7 +253,7 @@ pub fn draw_playbar(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
         .style(Style::default().fg(app.user_config.theme.playbar_text))
         .block(
           Block::default().title(Span::styled(
-            &track_name,
+            track_name,
             Style::default()
               .fg(app.user_config.theme.selected)
               .add_modifier(Modifier::BOLD),
