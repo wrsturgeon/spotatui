@@ -1183,6 +1183,9 @@ of the app. Beware that this comes at a CPU cost!",
     #[cfg(all(feature = "mpris", target_os = "linux"))]
     let mpris_for_events = mpris_manager.clone();
 
+    #[cfg(all(feature = "macos-media", target_os = "macos"))]
+    let macos_media_for_events = macos_media_manager.clone();
+
     // Clone MPRIS manager for UI loop (to update status on device changes)
     #[cfg(all(feature = "mpris", target_os = "linux"))]
     let mpris_for_ui = mpris_manager.clone();
@@ -1211,6 +1214,8 @@ of the app. Beware that this comes at a CPU cost!",
           app_for_events,
           shared_position_for_events,
           shared_is_playing_for_events,
+          #[cfg(all(feature = "macos-media", target_os = "macos"))]
+          macos_media_for_events,
         )
         .await;
       });
@@ -1573,6 +1578,9 @@ async fn handle_player_events(
   app: Arc<Mutex<App>>,
   shared_position: Arc<AtomicU64>,
   shared_is_playing: Arc<std::sync::atomic::AtomicBool>,
+  #[cfg(all(feature = "macos-media", target_os = "macos"))] macos_media_manager: Option<
+    Arc<macos_media::MacMediaManager>,
+  >,
 ) {
   use chrono::TimeDelta;
   use player::PlayerEvent;
@@ -1586,6 +1594,10 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_is_playing.store(true, Ordering::Relaxed);
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_playback_status(true);
+        }
         {
           let mut app_lock = app.lock().await;
           app_lock.native_is_playing = Some(true);
@@ -1610,6 +1622,10 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_is_playing.store(false, Ordering::Relaxed);
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_playback_status(false);
+        }
         {
           let mut app_lock = app.lock().await;
           app_lock.native_is_playing = Some(false);
@@ -1638,27 +1654,34 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::TrackChanged { audio_item } => {
+        use librespot_metadata::audio::UniqueFields;
+
+        let (artists, album) = match &audio_item.unique_fields {
+          UniqueFields::Track { artists, album, .. } => {
+            let artist_names: Vec<String> = artists.0.iter().map(|a| a.name.clone()).collect();
+            (artist_names, album.clone())
+          }
+          UniqueFields::Episode { show_name, .. } => (vec![show_name.clone()], String::new()),
+          UniqueFields::Local { artists, album, .. } => {
+            let artist_vec = artists
+              .as_ref()
+              .map(|a| vec![a.clone()])
+              .unwrap_or_default();
+            let album_str = album.clone().unwrap_or_default();
+            (artist_vec, album_str)
+          }
+        };
+
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_metadata(&audio_item.name, &artists, &album, audio_item.duration_ms);
+        }
+
         if let Ok(mut app) = app.try_lock() {
-          use librespot_metadata::audio::UniqueFields;
-          let (artists, album) = match &audio_item.unique_fields {
-            UniqueFields::Track { artists, album, .. } => {
-              let artist_names: Vec<String> = artists.0.iter().map(|a| a.name.clone()).collect();
-              (artist_names, album.clone())
-            }
-            UniqueFields::Episode { show_name, .. } => (vec![show_name.clone()], String::new()),
-            UniqueFields::Local { artists, album, .. } => {
-              let artist_vec = artists
-                .as_ref()
-                .map(|a| vec![a.clone()])
-                .unwrap_or_default();
-              let album_str = album.clone().unwrap_or_default();
-              (artist_vec, album_str)
-            }
-          };
           app.native_track_info = Some(app::NativeTrackInfo {
             name: audio_item.name.clone(),
             artists_display: artists.join(", "),
-            album,
+            album: album.clone(),
             duration_ms: audio_item.duration_ms,
           });
           app.song_progress_ms = 0;
@@ -1668,6 +1691,10 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::Stopped { .. } => {
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_stopped();
+        }
         if let Ok(mut app) = app.try_lock() {
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.is_playing = false;
@@ -1681,6 +1708,10 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::EndOfTrack { track_id, .. } => {
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_stopped();
+        }
         if let Ok(mut app) = app.try_lock() {
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.is_playing = false;
@@ -1694,8 +1725,14 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::VolumeChanged { volume } => {
+        let volume_percent = ((volume as f64 / 65535.0) * 100.0).round() as u8;
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_volume(volume_percent);
+        }
+
         if let Ok(mut app) = app.try_lock() {
-          let volume_percent = ((volume as f64 / 65535.0) * 100.0).round() as u32;
+          let volume_percent = volume_percent as u32;
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.device.volume_percent = Some(volume_percent);
           }
@@ -1709,6 +1746,10 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_position.store(position_ms as u64, Ordering::Relaxed);
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_position(position_ms as u64);
+        }
       }
       _ => {}
     }

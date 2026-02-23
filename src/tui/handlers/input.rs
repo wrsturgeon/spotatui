@@ -1,8 +1,8 @@
 extern crate unicode_width;
 
 use crate::core::app::{ActiveBlock, App, RouteId};
-use crate::tui::event::Key;
 use crate::infra::network::IoEvent;
+use crate::tui::event::Key;
 use rspotify::model::idtypes::{AlbumId, PlaylistId, ShowId, TrackId};
 use std::convert::TryInto;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};

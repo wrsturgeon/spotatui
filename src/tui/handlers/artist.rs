@@ -1,7 +1,7 @@
 use super::common_key_events;
 use crate::core::app::{ActiveBlock, App, ArtistBlock, RecommendationsContext, TrackTableContext};
-use crate::tui::event::Key;
 use crate::infra::network::IoEvent;
+use crate::tui::event::Key;
 use rspotify::{model::PlayableId, prelude::*};
 
 fn handle_down_press_on_selected_block(app: &mut App) {
