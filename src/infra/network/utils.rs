@@ -1,7 +1,7 @@
 use super::Network;
 use crate::core::app::{Announcement, AnnouncementLevel, LyricsStatus};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{de::Error as _, Deserialize, Deserializer};
 use std::collections::HashSet;
 use std::env;
 use std::time::{Duration, Instant};
@@ -16,7 +16,32 @@ struct LrcResponse {
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 struct GlobalSongCountResponse {
+  #[serde(deserialize_with = "deserialize_global_song_count")]
   count: u64,
+}
+
+const TELEMETRY_ENDPOINT: &str = "https://spotatui-counter.spotatui.workers.dev";
+
+fn deserialize_global_song_count<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  #[derive(Deserialize)]
+  #[serde(untagged)]
+  enum CountValue {
+    Number(u64),
+    String(String),
+  }
+
+  match CountValue::deserialize(deserializer)? {
+    CountValue::Number(value) => Ok(value),
+    CountValue::String(value) => {
+      let sanitized = value.replace(',', "");
+      sanitized
+        .parse::<u64>()
+        .map_err(|_| D::Error::custom("invalid global song count"))
+    }
+  }
 }
 
 #[derive(Deserialize, Debug)]
@@ -142,7 +167,8 @@ impl UtilsNetwork for Network {
     let client = reqwest::Client::new();
     // Fire and forget
     let _ = client
-      .post("https://api.spotatui.com/count/inc")
+      .post(TELEMETRY_ENDPOINT)
+      .header(reqwest::header::ACCEPT, "application/json")
       .timeout(Duration::from_secs(5))
       .send()
       .await;
@@ -151,7 +177,8 @@ impl UtilsNetwork for Network {
   async fn fetch_global_song_count(&mut self) {
     let client = reqwest::Client::new();
     match client
-      .get("https://api.spotatui.com/count")
+      .get(TELEMETRY_ENDPOINT)
+      .header(reqwest::header::ACCEPT, "application/json")
       .timeout(Duration::from_secs(5))
       .send()
       .await
