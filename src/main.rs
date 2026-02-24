@@ -1469,21 +1469,22 @@ async fn handle_player_events(
           );
         }
 
-        if let Ok(mut app) = app.try_lock() {
-          // Store immediate track info for instant UI display
-          app.native_track_info = Some(app::NativeTrackInfo {
-            name: audio_item.name.clone(),
-            artists_display: artists.join(", "),
-            album: album.clone(),
-            duration_ms: audio_item.duration_ms,
-          });
+        // Track metadata updates are critical for playbar correctness; do not drop
+        // them when the UI thread is briefly busy.
+        let mut app = app.lock().await;
+        // Store immediate track info for instant UI display
+        app.native_track_info = Some(app::NativeTrackInfo {
+          name: audio_item.name.clone(),
+          artists_display: artists.join(", "),
+          album: album.clone(),
+          duration_ms: audio_item.duration_ms,
+        });
 
-          app.song_progress_ms = 0;
-          app.last_track_id = Some(audio_item.track_id.to_string());
-          // Reset the poll timer so we don't immediately overwrite with stale API data
-          app.instant_since_last_current_playback_poll = std::time::Instant::now();
-          app.dispatch(IoEvent::GetCurrentPlayback);
-        }
+        app.song_progress_ms = 0;
+        app.last_track_id = Some(audio_item.track_id.to_string());
+        // Reset the poll timer so we don't immediately overwrite with stale API data
+        app.instant_since_last_current_playback_poll = std::time::Instant::now();
+        app.dispatch(IoEvent::GetCurrentPlayback);
       }
       PlayerEvent::Stopped { .. } => {
         // Update MPRIS status
@@ -1677,18 +1678,19 @@ async fn handle_player_events(
           macos_media.set_metadata(&audio_item.name, &artists, &album, audio_item.duration_ms);
         }
 
-        if let Ok(mut app) = app.try_lock() {
-          app.native_track_info = Some(app::NativeTrackInfo {
-            name: audio_item.name.clone(),
-            artists_display: artists.join(", "),
-            album: album.clone(),
-            duration_ms: audio_item.duration_ms,
-          });
-          app.song_progress_ms = 0;
-          app.last_track_id = Some(audio_item.track_id.to_string());
-          app.instant_since_last_current_playback_poll = std::time::Instant::now();
-          app.dispatch(IoEvent::GetCurrentPlayback);
-        }
+        // Track metadata updates are critical for playbar correctness; do not drop
+        // them when the UI thread is briefly busy.
+        let mut app = app.lock().await;
+        app.native_track_info = Some(app::NativeTrackInfo {
+          name: audio_item.name.clone(),
+          artists_display: artists.join(", "),
+          album: album.clone(),
+          duration_ms: audio_item.duration_ms,
+        });
+        app.song_progress_ms = 0;
+        app.last_track_id = Some(audio_item.track_id.to_string());
+        app.instant_since_last_current_playback_poll = std::time::Instant::now();
+        app.dispatch(IoEvent::GetCurrentPlayback);
       }
       PlayerEvent::Stopped { .. } => {
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
