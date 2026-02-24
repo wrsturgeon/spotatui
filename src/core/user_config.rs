@@ -95,6 +95,7 @@ impl Default for Theme {
 pub enum ThemePreset {
   #[default]
   Default,
+  PookiePink,
   Spotify,
   Vesper,
   Dracula,
@@ -111,6 +112,7 @@ impl ThemePreset {
   pub fn all() -> &'static [ThemePreset] {
     &[
       ThemePreset::Default,
+      ThemePreset::PookiePink,
       ThemePreset::Spotify,
       ThemePreset::Vesper,
       ThemePreset::Dracula,
@@ -126,6 +128,7 @@ impl ThemePreset {
   pub fn name(&self) -> &'static str {
     match self {
       ThemePreset::Default => "Default (Cyan)",
+      ThemePreset::PookiePink => "Pookie Pink",
       ThemePreset::Spotify => "Spotify",
       ThemePreset::Vesper => "Vesper",
       ThemePreset::Dracula => "Dracula",
@@ -142,6 +145,7 @@ impl ThemePreset {
   pub fn from_name(name: &str) -> Self {
     match name {
       "Default (Cyan)" => ThemePreset::Default,
+      "Pookie Pink" => ThemePreset::PookiePink,
       "Spotify" => ThemePreset::Spotify,
       "Vesper" => ThemePreset::Vesper,
       "Dracula" => ThemePreset::Dracula,
@@ -177,6 +181,26 @@ impl ThemePreset {
   pub fn to_theme(self) -> Theme {
     match self {
       ThemePreset::Default => Theme::default(),
+      ThemePreset::PookiePink => Theme {
+        analysis_bar: Color::Rgb(255, 255, 255),         // White
+        analysis_bar_text: Color::Rgb(165, 30, 100),     // Dark pink
+        active: Color::Rgb(150, 25, 92),                 // Deep pink
+        banner: Color::Rgb(255, 145, 205),               // Light-medium pink
+        error_border: Color::Rgb(175, 0, 75),            // Deep rose
+        error_text: Color::Rgb(255, 215, 235),           // Light pink-white
+        hint: Color::Rgb(255, 235, 245),                 // Soft white-pink
+        hovered: Color::Rgb(220, 85, 155),               // Mid pink for hover
+        inactive: Color::Rgb(255, 195, 225),             // Muted pink
+        playbar_background: Color::Rgb(245, 115, 180),   // Pink
+        playbar_progress: Color::Rgb(255, 255, 255),     // White
+        playbar_progress_text: Color::Rgb(175, 35, 105), // Dark pink
+        playbar_text: Color::Rgb(255, 255, 255),         // White
+        selected: Color::Rgb(125, 20, 80),               // Deeper pink for selected row
+        text: Color::Rgb(255, 255, 255),                 // White
+        background: Color::Rgb(245, 115, 180),           // Pink background
+        header: Color::Rgb(255, 255, 255),               // White
+        highlighted_lyrics: Color::Rgb(255, 230, 245),   // Light pink-white
+      },
       ThemePreset::Vesper => Theme {
         analysis_bar: Color::Rgb(153, 255, 228),     // Mint (#99FFE4)
         analysis_bar_text: Color::Rgb(16, 16, 16),   // Near-black (#101010)

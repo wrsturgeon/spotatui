@@ -77,7 +77,10 @@ pub fn draw_selectable_list<S>(
   let list = List::new(lst_items)
     .block(block)
     .style(app.user_config.theme.base_style())
-    .highlight_style(get_color(highlight_state, app.user_config.theme).add_modifier(Modifier::BOLD))
+    .highlight_style(
+      get_color(highlight_state, app.user_config.theme)
+        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+    )
     .highlight_symbol(Line::from("▶ ").style(get_color(highlight_state, app.user_config.theme)));
   f.render_stateful_widget(list, layout_chunk, &mut state);
 }

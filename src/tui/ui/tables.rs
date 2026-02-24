@@ -658,8 +658,8 @@ fn draw_table(
   selected_index: usize,
   highlight_state: (bool, bool),
 ) {
-  let selected_style =
-    get_color(highlight_state, app.user_config.theme).add_modifier(Modifier::BOLD);
+  let selected_style = get_color(highlight_state, app.user_config.theme)
+    .add_modifier(Modifier::BOLD | Modifier::REVERSED);
 
   let track_playing_index = app.current_playback_context.to_owned().and_then(|ctx| {
     ctx.item.and_then(|item| match item {
