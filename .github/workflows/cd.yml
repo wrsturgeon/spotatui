@@ -187,6 +187,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upate Nix Version Reference
+        id: nix_version
+        run: |
+          OLD_VERSION=$(grep -oP 'version\s*=\s*"\K[^"]+' flake.nix)
+          echo "Version: $OLD_VERSION"
+          NEW_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Version: $NEW_VERSION"
+          sed -i "s/version *= *\"$OLD_VERSION\"/version = \"$NEW_VERSION\"/" flake.nix
+
   publish-cargo:
     name: Publish to crates.io
     needs: release

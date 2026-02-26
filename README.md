@@ -122,6 +122,25 @@ yay -S spotatui-bin
 # Arch Linux (AUR) - build from source
 yay -S spotatui
 ```
+```nix
+# NixOS (Flake)
+
+# Add spotatui to your flake inputs:
+inputs = {
+  spotatui = {
+    url = "github:LargeModGames/spotatui";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+}
+
+# Add the spotatui package from your inputs to your config:
+{ inputs, ...}:{
+  # Your other configurations
+  environment.systemPackages = with pkgs; [
+    inputs.spotatui.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
+```
 
 Or download pre-built binaries from [GitHub Releases](https://github.com/LargeModGames/spotatui/releases/latest).
 
@@ -264,6 +283,9 @@ After that there is not much to it.
 
    # Fedora
    sudo dnf install pipewire-devel
+
+   # NixOS
+   nix develop github:LargeModGames/spotatui
    ```
 1. Clone or fork this repo and `cd` to it
 1. And then `cargo run`
