@@ -1,5 +1,5 @@
-use crate::network::{IoEvent, Network};
-use crate::user_config::UserConfig;
+use crate::core::user_config::UserConfig;
+use crate::infra::network::{IoEvent, Network};
 
 use super::util::{Flag, Format, FormatType, JumpDirection, Type};
 

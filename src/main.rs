@@ -25,38 +25,34 @@ mod alsa_silence {
   }
 }
 
-mod app;
-mod audio;
-mod banner;
 mod cli;
-mod config;
-#[cfg(feature = "cover-art")]
-mod cover_art;
-#[cfg(feature = "discord-rpc")]
-mod discord_rpc;
-mod event;
-mod handlers;
-#[cfg(all(feature = "macos-media", target_os = "macos"))]
-mod macos_media;
-#[cfg(all(feature = "mpris", target_os = "linux"))]
-mod mpris;
-mod network;
-#[cfg(feature = "streaming")]
-mod player;
-mod redirect_uri;
-mod sort;
-mod ui;
-mod user_config;
+mod core;
+mod infra;
+mod tui;
 
-use crate::app::RouteId;
-use crate::event::Key;
+use crate::core::app::{self, ActiveBlock, App, RouteId};
+use crate::core::config::{ClientConfig, NCSPOT_CLIENT_ID};
+use crate::core::user_config::{UserConfig, UserConfigPaths};
+use crate::infra::audio;
+#[cfg(feature = "discord-rpc")]
+use crate::infra::discord_rpc;
+#[cfg(all(feature = "macos-media", target_os = "macos"))]
+use crate::infra::macos_media;
+#[cfg(all(feature = "mpris", target_os = "linux"))]
+use crate::infra::mpris;
+use crate::infra::network::{IoEvent, Network};
+#[cfg(feature = "streaming")]
+use crate::infra::player;
+use crate::infra::redirect_uri::redirect_uri_web_server;
+use crate::tui::banner::BANNER;
+use crate::tui::event::{self, Key};
+use crate::tui::handlers;
+use crate::tui::ui::{self};
+
 use anyhow::{anyhow, Result};
-use app::{ActiveBlock, App};
 use backtrace::Backtrace;
-use banner::BANNER;
 use clap::{Arg, Command as ClapApp};
 use clap_complete::{generate, Shell};
-use config::{ClientConfig, NCSPOT_CLIENT_ID};
 use crossterm::{
   cursor::MoveTo,
   event::{DisableMouseCapture, EnableMouseCapture},
@@ -65,9 +61,7 @@ use crossterm::{
   ExecutableCommand,
 };
 use log::info;
-use network::{IoEvent, Network};
 use ratatui::backend::Backend;
-use redirect_uri::redirect_uri_web_server;
 use rspotify::{
   prelude::*,
   {AuthCodePkceSpotify, Config, Credentials, OAuth, Token},
@@ -87,7 +81,6 @@ use std::{
   time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
-use user_config::{UserConfig, UserConfigPaths};
 
 #[cfg(feature = "discord-rpc")]
 type DiscordRpcHandle = Option<discord_rpc::DiscordRpcManager>;
@@ -157,7 +150,7 @@ fn resolve_discord_app_id(user_config: &UserConfig) -> Option<String> {
 
 #[cfg(feature = "discord-rpc")]
 fn build_discord_playback(app: &App) -> Option<discord_rpc::DiscordPlayback> {
-  use crate::ui::util::create_artist_string;
+  use crate::tui::ui::util::create_artist_string;
   use rspotify::model::PlayableItem;
 
   let (track_info, is_playing) = if let Some(native_info) = &app.native_track_info {
@@ -233,7 +226,7 @@ fn build_discord_playback(app: &App) -> Option<discord_rpc::DiscordPlayback> {
 
 #[cfg(feature = "mpris")]
 fn get_mpris_metadata(app: &App) -> Option<MprisMetadataTuple> {
-  use crate::ui::util::create_artist_string;
+  use crate::tui::ui::util::create_artist_string;
   use rspotify::model::PlayableItem;
 
   if let Some(context) = &app.current_playback_context {
@@ -1933,7 +1926,7 @@ async fn start_ui(
 
   // Track previous streaming state to detect device changes for MPRIS
   // When switching from native streaming to external device (like spotifyd),
-  // we set MPRIS to stopped so the external player's MPRIS takes precedence
+  // we set MPRIS to stopped so the external player's MPRIS interface takes precedence
   let mut prev_is_streaming_active = false;
 
   // Lazy audio capture: only capture when in Analysis view
@@ -2410,6 +2403,15 @@ async fn start_ui(
             let pos_ms = pos.load(Ordering::Relaxed) as u128;
             if pos_ms > 0 && app.is_streaming_active {
               app.song_progress_ms = pos_ms;
+            }
+          }
+        }
+        #[cfg(not(feature = "streaming"))]
+        if let Some(ref pos) = shared_position {
+          if app.is_streaming_active {
+            let position_ms = pos.load(Ordering::Relaxed);
+            if position_ms > 0 {
+              app.song_progress_ms = position_ms as u128;
             }
           }
         }
