@@ -298,6 +298,15 @@ impl PlaybackNetwork for Network {
     uris: Option<Vec<PlayableId<'static>>>,
     offset: Option<usize>,
   ) {
+    let desired_shuffle_state = {
+      let app = self.app.lock().await;
+      app
+        .current_playback_context
+        .as_ref()
+        .map(|ctx| ctx.shuffle_state)
+        .unwrap_or(app.user_config.behavior.shuffle_enabled)
+    };
+
     // Check if we should use native streaming for playback
     #[cfg(feature = "streaming")]
     if is_native_streaming_active_for_playback(self).await {
@@ -383,11 +392,14 @@ impl PlaybackNetwork for Network {
           let mut app = self.app.lock().await;
           app.handle_error(anyhow!("Failed to start native playback: {}", e));
         } else {
+          let _ = player.set_shuffle(desired_shuffle_state);
           // Optimistic UI update
           let mut app = self.app.lock().await;
           if let Some(ctx) = &mut app.current_playback_context {
             ctx.is_playing = true;
+            ctx.shuffle_state = desired_shuffle_state;
           }
+          app.user_config.behavior.shuffle_enabled = desired_shuffle_state;
         }
         return;
       }
@@ -422,10 +434,17 @@ impl PlaybackNetwork for Network {
 
     match result {
       Ok(_) => {
+        if let Err(e) = self.spotify.shuffle(desired_shuffle_state, None).await {
+          let mut app = self.app.lock().await;
+          app.handle_error(anyhow!(e));
+        }
+
         let mut app = self.app.lock().await;
         if let Some(ctx) = &mut app.current_playback_context {
           ctx.is_playing = true;
+          ctx.shuffle_state = desired_shuffle_state;
         }
+        app.user_config.behavior.shuffle_enabled = desired_shuffle_state;
       }
       Err(e) => {
         let mut app = self.app.lock().await;

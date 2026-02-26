@@ -3,6 +3,11 @@ use crate::handlers::common_key_events::{down_event, left_event, right_event, up
 use crate::tui::event::Key;
 
 pub fn handler(key: Key, app: &mut App) {
+  if app.settings_unsaved_prompt_visible {
+    handle_unsaved_changes_prompt(key, app);
+    return;
+  }
+
   if app.settings_edit_mode {
     handle_edit_mode(key, app);
   } else {
@@ -24,17 +29,69 @@ fn handle_navigation(key: Key, app: &mut App) {
     Key::Enter => enter_edit_mode(app),
 
     // Save settings
-    key if key == app.user_config.keys.save_settings => save_settings(app),
+    key if key == app.user_config.keys.save_settings => {
+      let _ = save_settings(app);
+    }
 
     // Exit settings
-    Key::Esc => {
-      app.pop_navigation_stack();
-    }
+    Key::Esc => request_exit_settings(app),
     key if key == app.user_config.keys.back => {
-      app.pop_navigation_stack();
+      request_exit_settings(app);
     }
     _ => {}
   }
+}
+
+fn handle_unsaved_changes_prompt(key: Key, app: &mut App) {
+  match key {
+    Key::Char('y') | Key::Char('Y') => {
+      if save_settings(app) {
+        close_settings(app);
+      }
+    }
+    Key::Char('n') | Key::Char('N') | Key::Esc => {
+      close_settings(app);
+    }
+    Key::Enter => {
+      if app.settings_unsaved_prompt_save_selected {
+        if save_settings(app) {
+          close_settings(app);
+        }
+      } else {
+        close_settings(app);
+      }
+    }
+    key if left_event(key) || right_event(key) => {
+      app.settings_unsaved_prompt_save_selected = !app.settings_unsaved_prompt_save_selected;
+    }
+    key if key == app.user_config.keys.back => {
+      close_settings(app);
+    }
+    _ => {}
+  }
+}
+
+fn request_exit_settings(app: &mut App) {
+  if has_unsaved_settings_changes(app) {
+    app.settings_unsaved_prompt_visible = true;
+    app.settings_unsaved_prompt_save_selected = true;
+    app.settings_edit_mode = false;
+    app.settings_edit_buffer.clear();
+  } else {
+    close_settings(app);
+  }
+}
+
+fn close_settings(app: &mut App) {
+  app.settings_unsaved_prompt_visible = false;
+  app.settings_unsaved_prompt_save_selected = true;
+  app.settings_edit_mode = false;
+  app.settings_edit_buffer.clear();
+  app.pop_navigation_stack();
+}
+
+fn has_unsaved_settings_changes(app: &App) -> bool {
+  app.settings_items != app.settings_saved_items
 }
 
 fn handle_edit_mode(key: Key, app: &mut App) {
@@ -391,10 +448,75 @@ fn handle_preset_edit(key: Key, app: &mut App) {
   }
 }
 
-fn save_settings(app: &mut App) {
+fn save_settings(app: &mut App) -> bool {
   // Apply settings to user_config and save to file
   app.apply_settings_changes();
   if let Err(e) = app.user_config.save_config() {
     app.handle_error(anyhow::anyhow!("Failed to save settings: {}", e));
+    return false;
+  }
+
+  app.settings_saved_items = app.settings_items.clone();
+  true
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::core::app::{ActiveBlock, RouteId};
+
+  fn open_settings(app: &mut App) -> RouteId {
+    let previous_route = app.get_current_route().id.clone();
+    app.load_settings_for_category();
+    app.push_navigation_stack(RouteId::Settings, ActiveBlock::Settings);
+    previous_route
+  }
+
+  fn first_bool_setting_index(app: &App) -> usize {
+    app
+      .settings_items
+      .iter()
+      .position(|setting| matches!(setting.value, SettingValue::Bool(_)))
+      .expect("expected a boolean setting")
+  }
+
+  #[test]
+  fn esc_without_changes_exits_settings_without_prompt() {
+    let mut app = App::default();
+    let previous_route = open_settings(&mut app);
+
+    handler(Key::Esc, &mut app);
+
+    assert_eq!(app.get_current_route().id, previous_route);
+    assert!(!app.settings_unsaved_prompt_visible);
+  }
+
+  #[test]
+  fn esc_with_changes_opens_unsaved_prompt() {
+    let mut app = App::default();
+    open_settings(&mut app);
+
+    app.settings_selected_index = first_bool_setting_index(&app);
+    handler(Key::Enter, &mut app);
+    handler(Key::Esc, &mut app);
+
+    assert!(app.settings_unsaved_prompt_visible);
+    assert_eq!(app.get_current_route().active_block, ActiveBlock::Settings);
+  }
+
+  #[test]
+  fn n_dismisses_unsaved_prompt_and_discards_changes() {
+    let mut app = App::default();
+    let previous_route = open_settings(&mut app);
+
+    app.settings_selected_index = first_bool_setting_index(&app);
+    handler(Key::Enter, &mut app);
+    handler(Key::Esc, &mut app);
+    assert!(app.settings_unsaved_prompt_visible);
+
+    handler(Key::Char('n'), &mut app);
+
+    assert!(!app.settings_unsaved_prompt_visible);
+    assert_eq!(app.get_current_route().id, previous_route);
   }
 }

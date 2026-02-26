@@ -15,6 +15,7 @@ mod help_menu;
 mod home;
 mod input;
 mod library;
+mod mouse;
 mod playbar;
 mod playlist;
 mod podcasts;
@@ -33,12 +34,24 @@ use rspotify::model::idtypes::PlaylistId;
 use rspotify::model::{context::CurrentPlaybackContext, PlayableItem};
 
 pub use input::handler as input_handler;
+pub use mouse::handler as mouse_handler;
 
 pub fn handle_app(key: Key, app: &mut App) {
+  if app.get_current_route().active_block == ActiveBlock::Settings
+    && app.settings_unsaved_prompt_visible
+  {
+    settings::handler(key, app);
+    return;
+  }
+
   // First handle any global event and then move to block event
   match key {
     Key::Esc => {
-      handle_escape(app);
+      if app.get_current_route().active_block == ActiveBlock::Settings {
+        settings::handler(key, app);
+      } else {
+        handle_escape(app);
+      }
     }
     _ if key == app.user_config.keys.jump_to_album => {
       handle_jump_to_album(app);

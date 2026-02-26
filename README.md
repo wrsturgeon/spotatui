@@ -66,9 +66,9 @@ spotatui is extremely lightweight compared to the official Electron client.
 
 | Mode                            | RAM Usage |
 | :------------------------------ | :-------- |
-| **Native Streaming (Base)**     | ~48 MB    |
-| **With Synced Lyrics**          | ~48 MB    |
-| **With System-Wide Visualizer** | ~56 MB    |
+| **Native Streaming (Base)**     | ~78 MB    |
+| **With Synced Lyrics**          | ~78 MB    |
+| **With System-Wide Visualizer** | ~80 MB    |
 
 *Tested on Arch Linux (Hyprland).*
 

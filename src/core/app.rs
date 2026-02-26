@@ -488,7 +488,7 @@ impl SettingValue {
 }
 
 /// Represents a single configurable setting
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SettingItem {
   pub id: String,   // e.g., "behavior.seek_milliseconds"
   pub name: String, // e.g., "Seek Duration"
@@ -588,9 +588,12 @@ pub struct App {
   // Settings screen state
   pub settings_category: SettingsCategory,
   pub settings_items: Vec<SettingItem>,
+  pub settings_saved_items: Vec<SettingItem>,
   pub settings_selected_index: usize,
   pub settings_edit_mode: bool,
   pub settings_edit_buffer: String,
+  pub settings_unsaved_prompt_visible: bool,
+  pub settings_unsaved_prompt_save_selected: bool,
   /// Immediate track info from native player for instant UI updates
   pub native_track_info: Option<NativeTrackInfo>,
   /// Whether native streaming is active (disables API-based progress calculation)
@@ -777,9 +780,12 @@ impl Default for App {
       // Settings defaults
       settings_category: SettingsCategory::default(),
       settings_items: Vec::new(),
+      settings_saved_items: Vec::new(),
       settings_selected_index: 0,
       settings_edit_mode: false,
       settings_edit_buffer: String::new(),
+      settings_unsaved_prompt_visible: false,
+      settings_unsaved_prompt_save_selected: true,
       native_track_info: None,
       is_streaming_active: false,
       native_device_id: None,
@@ -2590,6 +2596,9 @@ impl App {
       }
     };
     self.settings_selected_index = 0;
+    self.settings_saved_items = self.settings_items.clone();
+    self.settings_unsaved_prompt_visible = false;
+    self.settings_unsaved_prompt_save_selected = true;
   }
 
   /// Apply changes from settings_items back to user_config

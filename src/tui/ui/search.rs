@@ -15,17 +15,38 @@ use super::util::{
   SMALL_TERMINAL_WIDTH,
 };
 
+const COMPACT_TOP_ROW_THRESHOLD: u16 = 60;
+const COMPACT_HELP_WIDTH: u16 = 8;
+const COMPACT_SETTINGS_WIDTH: u16 = 12;
+
 pub fn draw_input_and_help_box(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {
+  let compact_top_row = layout_chunk.width < COMPACT_TOP_ROW_THRESHOLD;
+
   // Check for the width and change the constraints accordingly
-  let constraints = if app.size.width >= SMALL_TERMINAL_WIDTH
+  let constraints = if compact_top_row {
+    [
+      Constraint::Min(1),
+      Constraint::Length(COMPACT_HELP_WIDTH),
+      Constraint::Length(COMPACT_SETTINGS_WIDTH),
+    ]
+  } else if app.size.width >= SMALL_TERMINAL_WIDTH
     && !app.user_config.behavior.enforce_wide_search_bar
   {
-    [Constraint::Percentage(65), Constraint::Percentage(35)]
+    [
+      Constraint::Percentage(65),
+      Constraint::Percentage(18),
+      Constraint::Percentage(17),
+    ]
   } else {
-    [Constraint::Percentage(90), Constraint::Percentage(10)]
+    [
+      Constraint::Percentage(80),
+      Constraint::Percentage(10),
+      Constraint::Percentage(10),
+    ]
   };
 
-  let [input_area, help_area] = layout_chunk.layout(&Layout::horizontal(constraints));
+  let [input_area, help_area, settings_area] =
+    layout_chunk.layout(&Layout::horizontal(constraints));
 
   let current_route = app.get_current_route();
 
@@ -66,25 +87,55 @@ pub fn draw_input_and_help_box(f: &mut Frame<'_>, app: &App, layout_chunk: Rect)
   );
   f.render_widget(input, input_area);
 
-  let help_block_text = if show_loading {
-    (app.user_config.theme.hint, "Loading...")
+  let help_content = if show_loading {
+    (app.user_config.theme.hint, "Help", "...")
+  } else if compact_top_row {
+    (app.user_config.theme.inactive, "Help", "?")
   } else {
-    (app.user_config.theme.inactive, "Type ?")
+    (app.user_config.theme.inactive, "Help", "Type ?")
   };
 
   let block = Block::default()
-    .title(Span::styled("Help", Style::default().fg(help_block_text.0)))
+    .title(Span::styled(
+      help_content.1,
+      Style::default().fg(help_content.0),
+    ))
     .borders(Borders::ALL)
     .border_type(BorderType::Rounded)
-    .border_style(Style::default().fg(help_block_text.0));
+    .border_style(Style::default().fg(help_content.0));
 
-  let lines = Text::from(help_block_text.1);
+  let lines = Text::from(help_content.2);
   let help = Paragraph::new(lines).block(block).style(
     Style::default()
-      .fg(help_block_text.0)
+      .fg(help_content.0)
       .bg(app.user_config.theme.background),
   );
   f.render_widget(help, help_area);
+
+  let settings_content = if compact_top_row {
+    ("Settings", "Open")
+  } else {
+    ("Settings", "Click")
+  };
+
+  let settings_color = app.user_config.theme.inactive;
+  let settings_block = Block::default()
+    .title(Span::styled(
+      settings_content.0,
+      Style::default().fg(settings_color),
+    ))
+    .borders(Borders::ALL)
+    .border_type(BorderType::Rounded)
+    .border_style(Style::default().fg(settings_color));
+
+  let settings = Paragraph::new(settings_content.1)
+    .block(settings_block)
+    .style(
+      Style::default()
+        .fg(settings_color)
+        .bg(app.user_config.theme.background),
+    );
+  f.render_widget(settings, settings_area);
 }
 
 pub fn draw_search_results(f: &mut Frame<'_>, app: &App, layout_chunk: Rect) {

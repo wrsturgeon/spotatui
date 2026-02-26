@@ -1,11 +1,14 @@
 use crate::app::{App, SettingValue, SettingsCategory};
 use ratatui::{
-  layout::{Constraint, Layout, Rect},
+  layout::{Alignment, Constraint, Layout, Rect},
   style::{Modifier, Style},
   text::{Line, Span},
-  widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+  widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs},
   Frame,
 };
+
+const UNSAVED_PROMPT_WIDTH: u16 = 58;
+const UNSAVED_PROMPT_HEIGHT: u16 = 9;
 
 pub fn draw_settings(f: &mut Frame<'_>, app: &App) {
   let [tabs_area, list_area, help_area] = f.area().layout(
@@ -20,6 +23,10 @@ pub fn draw_settings(f: &mut Frame<'_>, app: &App) {
   draw_category_tabs(f, app, tabs_area);
   draw_settings_list(f, app, list_area);
   draw_settings_help(f, app, help_area);
+
+  if app.settings_unsaved_prompt_visible {
+    draw_unsaved_changes_prompt(f, app);
+  }
 }
 
 fn draw_category_tabs(f: &mut Frame<'_>, app: &App, area: Rect) {
@@ -160,7 +167,7 @@ fn draw_settings_help(f: &mut Frame<'_>, app: &App, area: Rect) {
     }
   } else {
     &format!(
-      "↑/↓: Select | ←/→: Switch Tab | Enter: Toggle/Edit | {}: Save | Esc/q: Exit",
+      "↑/↓: Select | ←/→: Switch Tab | Enter: Toggle/Edit | Mouse: Click/Scroll | {}: Save | Esc/q: Exit",
       app.user_config.keys.save_settings
     )
   };
@@ -180,4 +187,68 @@ fn draw_settings_help(f: &mut Frame<'_>, app: &App, area: Rect) {
     );
 
   f.render_widget(help, area);
+}
+
+fn draw_unsaved_changes_prompt(f: &mut Frame<'_>, app: &App) {
+  let bounds = f.area();
+  let width = std::cmp::min(bounds.width.saturating_sub(4), UNSAVED_PROMPT_WIDTH);
+  if width == 0 {
+    return;
+  }
+
+  let height = UNSAVED_PROMPT_HEIGHT.min(bounds.height.saturating_sub(2).max(1));
+  let left = bounds.x + bounds.width.saturating_sub(width) / 2;
+  let top = bounds.y + bounds.height.saturating_sub(height) / 2;
+  let rect = Rect::new(left, top, width, height);
+
+  f.render_widget(Clear, rect);
+
+  let block = Block::default()
+    .title(" Unsaved Settings ")
+    .borders(Borders::ALL)
+    .style(app.user_config.theme.base_style())
+    .border_style(Style::default().fg(app.user_config.theme.active));
+  f.render_widget(block, rect);
+
+  let [message_area, buttons_area, hint_area] = rect.layout(
+    &Layout::vertical([
+      Constraint::Min(2),
+      Constraint::Length(3),
+      Constraint::Length(1),
+    ])
+    .margin(1),
+  );
+
+  let message = Paragraph::new("You have unsaved changes. Save before leaving settings?")
+    .style(app.user_config.theme.base_style())
+    .alignment(Alignment::Center);
+  f.render_widget(message, message_area);
+
+  let [yes_area, no_area] = buttons_area.layout(
+    &Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).horizontal_margin(3),
+  );
+
+  let yes_selected = app.settings_unsaved_prompt_save_selected;
+  let yes = Paragraph::new("[ Yes ]")
+    .alignment(Alignment::Center)
+    .style(Style::default().fg(if yes_selected {
+      app.user_config.theme.hovered
+    } else {
+      app.user_config.theme.inactive
+    }));
+  f.render_widget(yes, yes_area);
+
+  let no = Paragraph::new("[ No ]")
+    .alignment(Alignment::Center)
+    .style(Style::default().fg(if yes_selected {
+      app.user_config.theme.inactive
+    } else {
+      app.user_config.theme.hovered
+    }));
+  f.render_widget(no, no_area);
+
+  let hint = Paragraph::new("Y: Yes | N: No | Enter: Select | Esc: Cancel")
+    .alignment(Alignment::Center)
+    .style(Style::default().fg(app.user_config.theme.inactive));
+  f.render_widget(hint, hint_area);
 }

@@ -1,5 +1,5 @@
 use super::key::Key;
-use crossterm::event::{self, KeyEventKind};
+use crossterm::event::{self, Event as CrosstermEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use std::{sync::mpsc, thread, time::Duration};
 
 #[derive(Debug, Clone, Copy)]
@@ -22,9 +22,11 @@ impl Default for EventConfig {
 }
 
 /// An occurred event.
-pub enum Event<I> {
+pub enum Event {
   /// An input event occurred.
-  Input(I),
+  Input(Key),
+  /// A mouse event occurred.
+  Mouse(MouseEvent),
   /// An tick event occurred.
   Tick,
 }
@@ -32,9 +34,9 @@ pub enum Event<I> {
 /// A small event handler that wrap crossterm input and tick event. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
 pub struct Events {
-  rx: mpsc::Receiver<Event<Key>>,
+  rx: mpsc::Receiver<Event>,
   // Need to be kept around to prevent disposing the sender side.
-  _tx: mpsc::Sender<Event<Key>>,
+  _tx: mpsc::Sender<Event>,
 }
 
 impl Events {
@@ -55,17 +57,30 @@ impl Events {
       loop {
         // poll for tick rate duration, if no event, sent tick event.
         if event::poll(config.tick_rate).unwrap() {
-          if let event::Event::Key(key) = event::read().unwrap() {
-            // Only process key press events, not release or repeat.
-            // This fixes duplicate key events on Windows where both
-            // Press and Release events are sent for each key press.
-            if key.kind == KeyEventKind::Press {
-              let key = Key::from(key);
-              // If send fails, the receiver has been dropped (app is closing)
-              if event_tx.send(Event::Input(key)).is_err() {
-                break;
+          match event::read().unwrap() {
+            CrosstermEvent::Key(key) => {
+              // Only process key press events, not release or repeat.
+              // This fixes duplicate key events on Windows where both
+              // Press and Release events are sent for each key press.
+              if key.kind == KeyEventKind::Press {
+                let key = Key::from(key);
+                // If send fails, the receiver has been dropped (app is closing)
+                if event_tx.send(Event::Input(key)).is_err() {
+                  break;
+                }
               }
             }
+            CrosstermEvent::Mouse(mouse) => {
+              if matches!(
+                mouse.kind,
+                MouseEventKind::Down(_) | MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+              ) {
+                if event_tx.send(Event::Mouse(mouse)).is_err() {
+                  break;
+                }
+              }
+            }
+            _ => {}
           }
         }
 
@@ -81,7 +96,7 @@ impl Events {
 
   /// Attempts to read an event.
   /// This function will block the current thread.
-  pub fn next(&self) -> Result<Event<Key>, mpsc::RecvError> {
+  pub fn next(&self) -> Result<Event, mpsc::RecvError> {
     self.rx.recv()
   }
 }

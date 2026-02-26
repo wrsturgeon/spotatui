@@ -14,6 +14,7 @@ use rspotify::prelude::Id;
 
 use super::util::{create_artist_string, get_color, get_percentage_width, millis_to_minutes};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TableId {
   Album,
   AlbumList,
@@ -684,11 +685,14 @@ fn draw_table(
   // Make sure that the selected item is visible on the page. Need to add some rows of padding
   // to chunk height for header and header space to get a true table height
   let padding = 5;
-  let offset = layout_chunk
+  let visible_rows = layout_chunk
     .height
     .checked_sub(padding)
-    .and_then(|height| selected_index.checked_sub(height as usize))
+    .map(|height| height as usize)
     .unwrap_or(0);
+
+  let use_page_scroll = header.id == TableId::Song;
+  let offset = table_scroll_offset(selected_index, visible_rows, use_page_scroll);
 
   let rows = items.iter().skip(offset).enumerate().map(|(i, item)| {
     let mut formatted_row = item.format.clone();
@@ -767,4 +771,16 @@ fn draw_table(
     )
     .style(app.user_config.theme.base_style());
   f.render_widget(table, layout_chunk);
+}
+
+fn table_scroll_offset(selected_index: usize, visible_rows: usize, paged: bool) -> usize {
+  if visible_rows == 0 {
+    return 0;
+  }
+
+  if paged {
+    (selected_index / visible_rows) * visible_rows
+  } else {
+    selected_index.saturating_sub(visible_rows.saturating_sub(1))
+  }
 }

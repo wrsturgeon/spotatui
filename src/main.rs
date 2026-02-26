@@ -2124,7 +2124,9 @@ async fn start_ui(
         } else if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
-          if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
+          if current_active_block == ActiveBlock::Settings {
+            handlers::handle_app(key, &mut app);
+          } else if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
             if let Some(dismissed_id) = app.dismiss_active_announcement() {
               app.user_config.mark_announcement_seen(dismissed_id);
               if let Err(error) = app.user_config.save_config() {
@@ -2153,6 +2155,10 @@ async fn start_ui(
         } else {
           handlers::handle_app(key, &mut app);
         }
+      }
+      event::Event::Mouse(mouse) => {
+        let mut app = app.lock().await;
+        handlers::mouse_handler(mouse, &mut app);
       }
       event::Event::Tick => {
         let mut app = app.lock().await;
@@ -2422,7 +2428,9 @@ async fn start_ui(
         } else if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
-          if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
+          if current_active_block == ActiveBlock::Settings {
+            handlers::handle_app(key, &mut app);
+          } else if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
             if let Some(dismissed_id) = app.dismiss_active_announcement() {
               app.user_config.mark_announcement_seen(dismissed_id);
               if let Err(error) = app.user_config.save_config() {
@@ -2449,6 +2457,10 @@ async fn start_ui(
         } else {
           handlers::handle_app(key, &mut app);
         }
+      }
+      event::Event::Mouse(mouse) => {
+        let mut app = app.lock().await;
+        handlers::mouse_handler(mouse, &mut app);
       }
       event::Event::Tick => {
         let mut app = app.lock().await;
