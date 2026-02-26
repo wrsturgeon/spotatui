@@ -126,6 +126,17 @@
         "code",
         "bug"
       ]
+    },
+    {
+      "login": "MaySeikatsu",
+      "name": "MaySeikatsu",
+      "avatar_url": "https://avatars.githubusercontent.com/u/127960577?v=4",
+      "profile": "https://github.com/MaySeikatsu",
+      "contributions": [
+        "code",
+        "doc",
+        "platform"
+      ]
     }
   ],
   "contributorsPerLine": 7,
