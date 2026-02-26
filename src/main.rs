@@ -1689,12 +1689,7 @@ async fn handle_player_events(
         // Update macOS Now Playing metadata
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
         if let Some(ref macos_media) = macos_media_manager {
-          macos_media.set_metadata(
-            &audio_item.name,
-            &artists,
-            &album,
-            audio_item.duration_ms,
-          );
+          macos_media.set_metadata(&audio_item.name, &artists, &album, audio_item.duration_ms);
         }
 
         // Track metadata updates are critical for playbar correctness; do not drop

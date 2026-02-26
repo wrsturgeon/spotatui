@@ -38,7 +38,7 @@ pub enum MacMediaEvent {
 
 /// Commands to send TO the Now Playing center to update its state
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::enum_variant_names)]
 pub enum MacMediaCommand {
   SetMetadata {
     title: String,
@@ -270,19 +270,19 @@ fn handle_now_playing_command(cmd: &MacMediaCommand, info_center: &MPNowPlayingI
           NSMutableDictionary::new();
 
         let title_ns = NSString::from_str(title);
-        dict.insert(&*MPMediaItemPropertyTitle, &*title_ns);
+        dict.insert(MPMediaItemPropertyTitle, &*title_ns);
 
         let artist_ns = NSString::from_str(&artists.join(", "));
-        dict.insert(&*MPMediaItemPropertyArtist, &*artist_ns);
+        dict.insert(MPMediaItemPropertyArtist, &*artist_ns);
 
         let album_ns = NSString::from_str(album);
-        dict.insert(&*MPMediaItemPropertyAlbumTitle, &*album_ns);
+        dict.insert(MPMediaItemPropertyAlbumTitle, &*album_ns);
 
         let duration = NSNumber::numberWithDouble(f64::from(*duration_ms) / 1000.0);
-        dict.insert(&*MPMediaItemPropertyPlaybackDuration, &*duration);
+        dict.insert(MPMediaItemPropertyPlaybackDuration, &*duration);
 
         let rate = NSNumber::numberWithDouble(1.0);
-        dict.insert(&*MPNowPlayingInfoPropertyPlaybackRate, &*rate);
+        dict.insert(MPNowPlayingInfoPropertyPlaybackRate, &*rate);
 
         info_center.setNowPlayingInfo(Some(&dict));
       }
@@ -300,7 +300,7 @@ fn handle_now_playing_command(cmd: &MacMediaCommand, info_center: &MPNowPlayingI
           let dict: objc2::rc::Retained<NSMutableDictionary<NSString, AnyObject>> =
             NSMutableDictionary::dictionaryWithDictionary(&existing);
           let rate = NSNumber::numberWithDouble(if *is_playing { 1.0 } else { 0.0 });
-          dict.insert(&*MPNowPlayingInfoPropertyPlaybackRate, &*rate);
+          dict.insert(MPNowPlayingInfoPropertyPlaybackRate, &*rate);
           info_center.setNowPlayingInfo(Some(&dict));
         }
       }
@@ -310,7 +310,7 @@ fn handle_now_playing_command(cmd: &MacMediaCommand, info_center: &MPNowPlayingI
           let dict: objc2::rc::Retained<NSMutableDictionary<NSString, AnyObject>> =
             NSMutableDictionary::dictionaryWithDictionary(&existing);
           let elapsed = NSNumber::numberWithDouble(*position_ms as f64 / 1000.0);
-          dict.insert(&*MPNowPlayingInfoPropertyElapsedPlaybackTime, &*elapsed);
+          dict.insert(MPNowPlayingInfoPropertyElapsedPlaybackTime, &*elapsed);
           info_center.setNowPlayingInfo(Some(&dict));
         }
       }
