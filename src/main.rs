@@ -1183,6 +1183,7 @@ of the app. Beware that this comes at a CPU cost!",
     #[cfg(all(feature = "mpris", target_os = "linux"))]
     let mpris_for_events = mpris_manager.clone();
 
+    // Clone macOS media manager for player event handler
     #[cfg(all(feature = "macos-media", target_os = "macos"))]
     let macos_media_for_events = macos_media_manager.clone();
 
@@ -1595,10 +1596,13 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_is_playing.store(true, Ordering::Relaxed);
+
+        // Update macOS Now Playing playback status
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
         if let Some(ref macos_media) = macos_media_manager {
           macos_media.set_playback_status(true);
         }
+
         {
           let mut app_lock = app.lock().await;
           app_lock.native_is_playing = Some(true);
@@ -1623,10 +1627,13 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_is_playing.store(false, Ordering::Relaxed);
+
+        // Update macOS Now Playing playback status
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
         if let Some(ref macos_media) = macos_media_manager {
           macos_media.set_playback_status(false);
         }
+
         {
           let mut app_lock = app.lock().await;
           app_lock.native_is_playing = Some(false);
@@ -1645,6 +1652,12 @@ async fn handle_player_events(
         track_id: _,
         position_ms,
       } => {
+        // Update macOS Now Playing position on seek
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_position(position_ms as u64);
+        }
+
         if let Ok(mut app) = app.try_lock() {
           app.song_progress_ms = position_ms as u128;
           app.seek_ms = None;
@@ -1673,9 +1686,15 @@ async fn handle_player_events(
           }
         };
 
+        // Update macOS Now Playing metadata
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
         if let Some(ref macos_media) = macos_media_manager {
-          macos_media.set_metadata(&audio_item.name, &artists, &album, audio_item.duration_ms);
+          macos_media.set_metadata(
+            &audio_item.name,
+            &artists,
+            &album,
+            audio_item.duration_ms,
+          );
         }
 
         // Track metadata updates are critical for playbar correctness; do not drop
@@ -1693,10 +1712,12 @@ async fn handle_player_events(
         app.dispatch(IoEvent::GetCurrentPlayback);
       }
       PlayerEvent::Stopped { .. } => {
+        // Update macOS Now Playing status
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
         if let Some(ref macos_media) = macos_media_manager {
           macos_media.set_stopped();
         }
+
         if let Ok(mut app) = app.try_lock() {
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.is_playing = false;
@@ -1710,10 +1731,12 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::EndOfTrack { track_id, .. } => {
+        // Update macOS Now Playing status
         #[cfg(all(feature = "macos-media", target_os = "macos"))]
         if let Some(ref macos_media) = macos_media_manager {
           macos_media.set_stopped();
         }
+
         if let Ok(mut app) = app.try_lock() {
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.is_playing = false;
@@ -2463,6 +2486,14 @@ async fn start_ui(
         handlers::mouse_handler(mouse, &mut app);
       }
       event::Event::Tick => {
+        // Tick the main run loop so macOS delivers media key events.
+        // Required in addition to the media thread's run loop tick.
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        {
+          use objc2_foundation::{NSDate, NSRunLoop};
+          NSRunLoop::currentRunLoop().runUntilDate(&NSDate::dateWithTimeIntervalSinceNow(0.001));
+        }
+
         let mut app = app.lock().await;
         app.update_on_tick();
 
