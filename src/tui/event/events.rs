@@ -74,10 +74,9 @@ impl Events {
               if matches!(
                 mouse.kind,
                 MouseEventKind::Down(_) | MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
-              ) {
-                if event_tx.send(Event::Mouse(mouse)).is_err() {
-                  break;
-                }
+              ) && event_tx.send(Event::Mouse(mouse)).is_err()
+              {
+                break;
               }
             }
             _ => {}
