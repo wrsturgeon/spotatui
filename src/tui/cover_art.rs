@@ -8,7 +8,6 @@ use ratatui_image::{
 };
 use rspotify::model::Image;
 use std::sync::Mutex;
-use tokio::io::AsyncWriteExt;
 
 pub struct CoverArt {
   pub state: Mutex<Option<CoverArtState>>,
@@ -73,10 +72,8 @@ impl CoverArt {
             None => Vec::new(),
           };
 
-          file
-            .write_all(&res.bytes().await.unwrap())
-            .await
-            .expect("error while downloading album art");
+          let bytes = res.bytes().await?;
+          file.extend_from_slice(&bytes);
 
           debug!("finished reading response: {} bytes", file.len());
           file
@@ -86,7 +83,7 @@ impl CoverArt {
 
       let image_protocol = self
         .picker
-        .new_resize_protocol(image::load_from_memory(&file).unwrap());
+        .new_resize_protocol(image::load_from_memory(&file).map_err(|e| anyhow!(e))?);
 
       self.set_state(CoverArtState::new(image.url.clone(), image_protocol));
       info!("got new cover art: {}", image.url);

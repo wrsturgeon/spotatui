@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use rspotify::model::{
   artist::FullArtist,
   enums::{Country, Market, SearchType},
-  idtypes::{AlbumId, ArtistId},
+  idtypes::AlbumId,
   page::Page,
   search::SearchResult,
 };
