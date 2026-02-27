@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.37.0] - 2026-02-26
+## [0.37.0] - 2026-02-27
 
 ### Added
 
@@ -11,6 +11,9 @@
 - **Animated Home Banner Gradient**: Added animation to the home banner gradient.
 - **Remote Announcements and Free-Account Messaging**: Added remote announcement support and in-app messaging for free-account playback limitations.
 - **New Logging System**: Added a centralized runtime logging pipeline and session log files in `/tmp/spotatui_logs/spotatuilog{PID}` for diagnostics ([#102](https://github.com/LargeModGames/spotatui/pull/102)).
+- **Playbar Cover Art Rendering (Optional)**: Added optional cover art rendering next to the currently playing song/episode title via the `cover-art` feature flag and `ratatui-image` integration ([#111](https://github.com/LargeModGames/spotatui/pull/111)).
+- **Cover Art Settings Controls**: Added behavior toggles to enable/disable artwork rendering and force rendering on terminals without full image support (`behavior.draw_cover_art`, `behavior.draw_cover_art_forced`) ([#111](https://github.com/LargeModGames/spotatui/pull/111)).
+- **Nix Flake Support**: Added `flake.nix` for flake-based NixOS/Nix installs, including `nix run`/`nix develop` workflow documentation ([#117](https://github.com/LargeModGames/spotatui/pull/117)).
 
 ### Changed
 
@@ -26,11 +29,14 @@
 - **Like Action 400 Errors**: Fixed `400 Bad Request` failures when liking songs.
 - **macOS Media Integration Regressions**: Fixed macOS media support regressions in TUI handlers.
 - **Global Song Counter Reliability**: Fixed issues affecting global song counter updates.
+- **macOS Media Keys and Now Playing Reliability**: Fixed media-key handling and Control Center integration by wiring required macOS app/run-loop behavior and publishing now-playing metadata so spotatui responds to play/pause/next/previous correctly ([#120](https://github.com/LargeModGames/spotatui/pull/120)).
 
 ### Internal
 
 - **Dependency Maintenance**: Bumped Rust minor dependency updates ([#104](https://github.com/LargeModGames/spotatui/pull/104)) and refreshed `Cargo.lock`.
 - **Code Quality/Formatting**: Fixed clippy warnings and applied rustfmt cleanups ([#106](https://github.com/LargeModGames/spotatui/pull/106)).
+- **Nix Release Automation**: Updated release workflow to sync `flake.nix` package version from `Cargo.toml` during releases ([#117](https://github.com/LargeModGames/spotatui/pull/117)).
+- **Dependency Maintenance (Follow-up)**: Bumped `clap` to `4.5.60` and `anyhow` to `1.0.102` ([#115](https://github.com/LargeModGames/spotatui/pull/115)).
 
 ## [0.36.2] - 2026-02-15
 
