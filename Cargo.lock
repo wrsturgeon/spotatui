@@ -5223,7 +5223,7 @@ dependencies = [
 
 [[package]]
 name = "spotatui"
-version = "0.36.3-debug.1"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "arboard",
