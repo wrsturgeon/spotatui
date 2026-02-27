@@ -137,6 +137,16 @@
         "doc",
         "platform"
       ]
+    },
+    {
+      "login": "topongo",
+      "name": "Lorenzo Bodini",
+      "avatar_url": "https://avatars.githubusercontent.com/u/32436755?v=4",
+      "profile": "http://prabo.org",
+      "contributions": [
+        "code",
+        "design"
+      ]
     }
   ],
   "contributorsPerLine": 7,
