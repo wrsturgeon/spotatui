@@ -108,11 +108,11 @@ impl SearchNetwork for Network {
       let artist_ids = album_results
         .items
         .iter()
-        .filter_map(|item| {
+        .flat_map(|item| {
           item
-            .id
-            .as_ref()
-            .map(|id| ArtistId::from_id(id.id()).unwrap().into_static())
+            .artists
+            .iter()
+            .filter_map(|artist| artist.id.as_ref().map(|id| id.to_owned().into_static()))
         })
         .collect();
 
