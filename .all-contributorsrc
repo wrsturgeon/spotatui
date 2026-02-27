@@ -126,6 +126,27 @@
         "code",
         "bug"
       ]
+    },
+    {
+      "login": "MaySeikatsu",
+      "name": "MaySeikatsu",
+      "avatar_url": "https://avatars.githubusercontent.com/u/127960577?v=4",
+      "profile": "https://github.com/MaySeikatsu",
+      "contributions": [
+        "code",
+        "doc",
+        "platform"
+      ]
+    },
+    {
+      "login": "Vi1i",
+      "name": "Vi1i Petal",
+      "avatar_url": "https://avatars.githubusercontent.com/u/6485370?v=4",
+      "profile": "https://github.com/Vi1i",
+      "contributions": [
+        "code",
+        "bug"
+      ]
     }
   ],
   "contributorsPerLine": 7,

@@ -122,6 +122,25 @@ yay -S spotatui-bin
 # Arch Linux (AUR) - build from source
 yay -S spotatui
 ```
+```nix
+# NixOS (Flake)
+
+# Add spotatui to your flake inputs:
+inputs = {
+  spotatui = {
+    url = "github:LargeModGames/spotatui";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+}
+
+# Add the spotatui package from your inputs to your config:
+{ inputs, ...}:{
+  # Your other configurations
+  environment.systemPackages = with pkgs; [
+    inputs.spotatui.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
+```
 
 Or download pre-built binaries from [GitHub Releases](https://github.com/LargeModGames/spotatui/releases/latest).
 
@@ -264,6 +283,9 @@ After that there is not much to it.
 
    # Fedora
    sudo dnf install pipewire-devel
+
+   # NixOS
+   nix develop github:LargeModGames/spotatui
    ```
 1. Clone or fork this repo and `cd` to it
 1. And then `cargo run`
@@ -307,6 +329,8 @@ Originally forked from [spotify-tui](https://github.com/Rigellute/spotify-tui) b
       <td align="center" valign="top" width="14.28%"><a href="https://dpnova.github.io/"><img src="https://avatars.githubusercontent.com/u/229943?v=4?s=100" width="100px;" alt="David Novakovic"/><br /><sub><b>David Novakovic</b></sub></a><br /><a href="https://github.com/LargeModGames/spotatui/commits?author=dpnova" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="http://nthpaul.com"><img src="https://avatars.githubusercontent.com/u/70828466?v=4?s=100" width="100px;" alt="Paul"/><br /><sub><b>Paul</b></sub></a><br /><a href="#design-nthpaul" title="Design">🎨</a> <a href="https://github.com/LargeModGames/spotatui/commits?author=nthpaul" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/AFE123x"><img src="https://avatars.githubusercontent.com/u/121839885?v=4?s=100" width="100px;" alt="Arun Felix"/><br /><sub><b>Arun Felix</b></sub></a><br /><a href="https://github.com/LargeModGames/spotatui/commits?author=AFE123x" title="Code">💻</a> <a href="https://github.com/LargeModGames/spotatui/issues?q=author%3AAFE123x" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/MaySeikatsu"><img src="https://avatars.githubusercontent.com/u/127960577?v=4?s=100" width="100px;" alt="MaySeikatsu"/><br /><sub><b>MaySeikatsu</b></sub></a><br /><a href="https://github.com/LargeModGames/spotatui/commits?author=MaySeikatsu" title="Code">💻</a> <a href="https://github.com/LargeModGames/spotatui/commits?author=MaySeikatsu" title="Documentation">📖</a> <a href="#platform-MaySeikatsu" title="Packaging/porting to new platform">📦</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/Vi1i"><img src="https://avatars.githubusercontent.com/u/6485370?v=4?s=100" width="100px;" alt="Vi1i Petal"/><br /><sub><b>Vi1i Petal</b></sub></a><br /><a href="https://github.com/LargeModGames/spotatui/commits?author=Vi1i" title="Code">💻</a> <a href="https://github.com/LargeModGames/spotatui/issues?q=author%3AVi1i" title="Bug reports">🐛</a></td>
     </tr>
   </tbody>
 </table>
