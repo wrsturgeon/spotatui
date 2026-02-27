@@ -25,36 +25,34 @@ mod alsa_silence {
   }
 }
 
-mod app;
-mod audio;
-mod banner;
 mod cli;
-mod config;
-#[cfg(feature = "discord-rpc")]
-mod discord_rpc;
-mod event;
-mod handlers;
-#[cfg(all(feature = "macos-media", target_os = "macos"))]
-mod macos_media;
-#[cfg(all(feature = "mpris", target_os = "linux"))]
-mod mpris;
-mod network;
-#[cfg(feature = "streaming")]
-mod player;
-mod redirect_uri;
-mod sort;
-mod ui;
-mod user_config;
+mod core;
+mod infra;
+mod tui;
 
-use crate::app::RouteId;
-use crate::event::Key;
+use crate::core::app::{self, ActiveBlock, App, RouteId};
+use crate::core::config::{ClientConfig, NCSPOT_CLIENT_ID};
+use crate::core::user_config::{UserConfig, UserConfigPaths};
+use crate::infra::audio;
+#[cfg(feature = "discord-rpc")]
+use crate::infra::discord_rpc;
+#[cfg(all(feature = "macos-media", target_os = "macos"))]
+use crate::infra::macos_media;
+#[cfg(all(feature = "mpris", target_os = "linux"))]
+use crate::infra::mpris;
+use crate::infra::network::{IoEvent, Network};
+#[cfg(feature = "streaming")]
+use crate::infra::player;
+use crate::infra::redirect_uri::redirect_uri_web_server;
+use crate::tui::banner::BANNER;
+use crate::tui::event::{self, Key};
+use crate::tui::handlers;
+use crate::tui::ui::{self};
+
 use anyhow::{anyhow, Result};
-use app::{ActiveBlock, App};
 use backtrace::Backtrace;
-use banner::BANNER;
 use clap::{Arg, Command as ClapApp};
 use clap_complete::{generate, Shell};
-use config::{ClientConfig, NCSPOT_CLIENT_ID};
 use crossterm::{
   cursor::MoveTo,
   event::{DisableMouseCapture, EnableMouseCapture},
@@ -63,9 +61,7 @@ use crossterm::{
   ExecutableCommand,
 };
 use log::info;
-use network::{IoEvent, Network};
 use ratatui::backend::Backend;
-use redirect_uri::redirect_uri_web_server;
 use rspotify::{
   prelude::*,
   {AuthCodePkceSpotify, Config, Credentials, OAuth, Token},
@@ -85,7 +81,6 @@ use std::{
   time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
-use user_config::{UserConfig, UserConfigPaths};
 
 #[cfg(feature = "discord-rpc")]
 type DiscordRpcHandle = Option<discord_rpc::DiscordRpcManager>;
@@ -155,7 +150,7 @@ fn resolve_discord_app_id(user_config: &UserConfig) -> Option<String> {
 
 #[cfg(feature = "discord-rpc")]
 fn build_discord_playback(app: &App) -> Option<discord_rpc::DiscordPlayback> {
-  use crate::ui::util::create_artist_string;
+  use crate::tui::ui::util::create_artist_string;
   use rspotify::model::PlayableItem;
 
   let (track_info, is_playing) = if let Some(native_info) = &app.native_track_info {
@@ -231,7 +226,7 @@ fn build_discord_playback(app: &App) -> Option<discord_rpc::DiscordPlayback> {
 
 #[cfg(feature = "mpris")]
 fn get_mpris_metadata(app: &App) -> Option<MprisMetadataTuple> {
-  use crate::ui::util::create_artist_string;
+  use crate::tui::ui::util::create_artist_string;
   use rspotify::model::PlayableItem;
 
   if let Some(context) = &app.current_playback_context {
@@ -1188,6 +1183,10 @@ of the app. Beware that this comes at a CPU cost!",
     #[cfg(all(feature = "mpris", target_os = "linux"))]
     let mpris_for_events = mpris_manager.clone();
 
+    // Clone macOS media manager for player event handler
+    #[cfg(all(feature = "macos-media", target_os = "macos"))]
+    let macos_media_for_events = macos_media_manager.clone();
+
     // Clone MPRIS manager for UI loop (to update status on device changes)
     #[cfg(all(feature = "mpris", target_os = "linux"))]
     let mpris_for_ui = mpris_manager.clone();
@@ -1216,6 +1215,8 @@ of the app. Beware that this comes at a CPU cost!",
           app_for_events,
           shared_position_for_events,
           shared_is_playing_for_events,
+          #[cfg(all(feature = "macos-media", target_os = "macos"))]
+          macos_media_for_events,
         )
         .await;
       });
@@ -1469,21 +1470,22 @@ async fn handle_player_events(
           );
         }
 
-        if let Ok(mut app) = app.try_lock() {
-          // Store immediate track info for instant UI display
-          app.native_track_info = Some(app::NativeTrackInfo {
-            name: audio_item.name.clone(),
-            artists_display: artists.join(", "),
-            album: album.clone(),
-            duration_ms: audio_item.duration_ms,
-          });
+        // Track metadata updates are critical for playbar correctness; do not drop
+        // them when the UI thread is briefly busy.
+        let mut app = app.lock().await;
+        // Store immediate track info for instant UI display
+        app.native_track_info = Some(app::NativeTrackInfo {
+          name: audio_item.name.clone(),
+          artists_display: artists.join(", "),
+          album: album.clone(),
+          duration_ms: audio_item.duration_ms,
+        });
 
-          app.song_progress_ms = 0;
-          app.last_track_id = Some(audio_item.track_id.to_string());
-          // Reset the poll timer so we don't immediately overwrite with stale API data
-          app.instant_since_last_current_playback_poll = std::time::Instant::now();
-          app.dispatch(IoEvent::GetCurrentPlayback);
-        }
+        app.song_progress_ms = 0;
+        app.last_track_id = Some(audio_item.track_id.to_string());
+        // Reset the poll timer so we don't immediately overwrite with stale API data
+        app.instant_since_last_current_playback_poll = std::time::Instant::now();
+        app.dispatch(IoEvent::GetCurrentPlayback);
       }
       PlayerEvent::Stopped { .. } => {
         // Update MPRIS status
@@ -1578,6 +1580,9 @@ async fn handle_player_events(
   app: Arc<Mutex<App>>,
   shared_position: Arc<AtomicU64>,
   shared_is_playing: Arc<std::sync::atomic::AtomicBool>,
+  #[cfg(all(feature = "macos-media", target_os = "macos"))] macos_media_manager: Option<
+    Arc<macos_media::MacMediaManager>,
+  >,
 ) {
   use chrono::TimeDelta;
   use player::PlayerEvent;
@@ -1591,6 +1596,13 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_is_playing.store(true, Ordering::Relaxed);
+
+        // Update macOS Now Playing playback status
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_playback_status(true);
+        }
+
         {
           let mut app_lock = app.lock().await;
           app_lock.native_is_playing = Some(true);
@@ -1615,6 +1627,13 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_is_playing.store(false, Ordering::Relaxed);
+
+        // Update macOS Now Playing playback status
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_playback_status(false);
+        }
+
         {
           let mut app_lock = app.lock().await;
           app_lock.native_is_playing = Some(false);
@@ -1633,6 +1652,12 @@ async fn handle_player_events(
         track_id: _,
         position_ms,
       } => {
+        // Update macOS Now Playing position on seek
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_position(position_ms as u64);
+        }
+
         if let Ok(mut app) = app.try_lock() {
           app.song_progress_ms = position_ms as u128;
           app.seek_ms = None;
@@ -1643,36 +1668,51 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::TrackChanged { audio_item } => {
-        if let Ok(mut app) = app.try_lock() {
-          use librespot_metadata::audio::UniqueFields;
-          let (artists, album) = match &audio_item.unique_fields {
-            UniqueFields::Track { artists, album, .. } => {
-              let artist_names: Vec<String> = artists.0.iter().map(|a| a.name.clone()).collect();
-              (artist_names, album.clone())
-            }
-            UniqueFields::Episode { show_name, .. } => (vec![show_name.clone()], String::new()),
-            UniqueFields::Local { artists, album, .. } => {
-              let artist_vec = artists
-                .as_ref()
-                .map(|a| vec![a.clone()])
-                .unwrap_or_default();
-              let album_str = album.clone().unwrap_or_default();
-              (artist_vec, album_str)
-            }
-          };
-          app.native_track_info = Some(app::NativeTrackInfo {
-            name: audio_item.name.clone(),
-            artists_display: artists.join(", "),
-            album,
-            duration_ms: audio_item.duration_ms,
-          });
-          app.song_progress_ms = 0;
-          app.last_track_id = Some(audio_item.track_id.to_string());
-          app.instant_since_last_current_playback_poll = std::time::Instant::now();
-          app.dispatch(IoEvent::GetCurrentPlayback);
+        use librespot_metadata::audio::UniqueFields;
+
+        let (artists, album) = match &audio_item.unique_fields {
+          UniqueFields::Track { artists, album, .. } => {
+            let artist_names: Vec<String> = artists.0.iter().map(|a| a.name.clone()).collect();
+            (artist_names, album.clone())
+          }
+          UniqueFields::Episode { show_name, .. } => (vec![show_name.clone()], String::new()),
+          UniqueFields::Local { artists, album, .. } => {
+            let artist_vec = artists
+              .as_ref()
+              .map(|a| vec![a.clone()])
+              .unwrap_or_default();
+            let album_str = album.clone().unwrap_or_default();
+            (artist_vec, album_str)
+          }
+        };
+
+        // Update macOS Now Playing metadata
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_metadata(&audio_item.name, &artists, &album, audio_item.duration_ms);
         }
+
+        // Track metadata updates are critical for playbar correctness; do not drop
+        // them when the UI thread is briefly busy.
+        let mut app = app.lock().await;
+        app.native_track_info = Some(app::NativeTrackInfo {
+          name: audio_item.name.clone(),
+          artists_display: artists.join(", "),
+          album: album.clone(),
+          duration_ms: audio_item.duration_ms,
+        });
+        app.song_progress_ms = 0;
+        app.last_track_id = Some(audio_item.track_id.to_string());
+        app.instant_since_last_current_playback_poll = std::time::Instant::now();
+        app.dispatch(IoEvent::GetCurrentPlayback);
       }
       PlayerEvent::Stopped { .. } => {
+        // Update macOS Now Playing status
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_stopped();
+        }
+
         if let Ok(mut app) = app.try_lock() {
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.is_playing = false;
@@ -1686,6 +1726,12 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::EndOfTrack { track_id, .. } => {
+        // Update macOS Now Playing status
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_stopped();
+        }
+
         if let Ok(mut app) = app.try_lock() {
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.is_playing = false;
@@ -1699,8 +1745,14 @@ async fn handle_player_events(
         }
       }
       PlayerEvent::VolumeChanged { volume } => {
+        let volume_percent = ((volume as f64 / 65535.0) * 100.0).round() as u8;
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_volume(volume_percent);
+        }
+
         if let Ok(mut app) = app.try_lock() {
-          let volume_percent = ((volume as f64 / 65535.0) * 100.0).round() as u32;
+          let volume_percent = volume_percent as u32;
           if let Some(ref mut ctx) = app.current_playback_context {
             ctx.device.volume_percent = Some(volume_percent);
           }
@@ -1714,6 +1766,10 @@ async fn handle_player_events(
         position_ms,
       } => {
         shared_position.store(position_ms as u64, Ordering::Relaxed);
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        if let Some(ref macos_media) = macos_media_manager {
+          macos_media.set_position(position_ms as u64);
+        }
       }
       _ => {}
     }
@@ -1931,7 +1987,7 @@ async fn start_ui(
 
   // Track previous streaming state to detect device changes for MPRIS
   // When switching from native streaming to external device (like spotifyd),
-  // we set MPRIS to stopped so the external player's MPRIS takes precedence
+  // we set MPRIS to stopped so the external player's MPRIS interface takes precedence
   let mut prev_is_streaming_active = false;
 
   // Lazy audio capture: only capture when in Analysis view
@@ -2022,6 +2078,9 @@ async fn start_ui(
         ActiveBlock::AnnouncementPrompt => {
           ui::draw_announcement_prompt(f, &app);
         }
+        ActiveBlock::ExitPrompt => {
+          ui::draw_exit_prompt(f, &app);
+        }
         ActiveBlock::Settings => {
           ui::settings::draw_settings(f, &app);
         }
@@ -2066,10 +2125,26 @@ async fn start_ui(
 
         // To avoid swallowing the global key presses `q` and `-` make a special
         // case for the input handler
-        if current_active_block == ActiveBlock::Input {
+        if current_active_block == ActiveBlock::ExitPrompt {
+          match key {
+            Key::Enter | Key::Char('y') | Key::Char('Y') => {
+              app.close_io_channel();
+              break;
+            }
+            Key::Esc | Key::Char('n') | Key::Char('N') => {
+              app.pop_navigation_stack();
+            }
+            _ if key == app.user_config.keys.back => {
+              app.pop_navigation_stack();
+            }
+            _ => {}
+          }
+        } else if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
-          if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
+          if current_active_block == ActiveBlock::Settings {
+            handlers::handle_app(key, &mut app);
+          } else if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
             if let Some(dismissed_id) = app.dismiss_active_announcement() {
               app.user_config.mark_announcement_seen(dismissed_id);
               if let Err(error) = app.user_config.save_config() {
@@ -2092,13 +2167,16 @@ async fn start_ui(
               None => None,
             };
             if pop_result.is_none() {
-              app.close_io_channel();
-              break; // Exit application
+              app.push_navigation_stack(RouteId::ExitPrompt, ActiveBlock::ExitPrompt);
             }
           }
         } else {
           handlers::handle_app(key, &mut app);
         }
+      }
+      event::Event::Mouse(mouse) => {
+        let mut app = app.lock().await;
+        handlers::mouse_handler(mouse, &mut app);
       }
       event::Event::Tick => {
         let mut app = app.lock().await;
@@ -2314,6 +2392,7 @@ async fn start_ui(
           ActiveBlock::BasicView => ui::draw_basic_view(f, &app),
           ActiveBlock::UpdatePrompt => ui::draw_update_prompt(f, &app),
           ActiveBlock::AnnouncementPrompt => ui::draw_announcement_prompt(f, &app),
+          ActiveBlock::ExitPrompt => ui::draw_exit_prompt(f, &app),
           ActiveBlock::Settings => ui::settings::draw_settings(f, &app),
           _ => ui::draw_main_layout(f, &app),
         }
@@ -2350,10 +2429,26 @@ async fn start_ui(
 
         let current_active_block = app.get_current_route().active_block;
 
-        if current_active_block == ActiveBlock::Input {
+        if current_active_block == ActiveBlock::ExitPrompt {
+          match key {
+            Key::Enter | Key::Char('y') | Key::Char('Y') => {
+              app.close_io_channel();
+              break;
+            }
+            Key::Esc | Key::Char('n') | Key::Char('N') => {
+              app.pop_navigation_stack();
+            }
+            _ if key == app.user_config.keys.back => {
+              app.pop_navigation_stack();
+            }
+            _ => {}
+          }
+        } else if current_active_block == ActiveBlock::Input {
           handlers::input_handler(key, &mut app);
         } else if key == app.user_config.keys.back {
-          if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
+          if current_active_block == ActiveBlock::Settings {
+            handlers::handle_app(key, &mut app);
+          } else if app.get_current_route().active_block == ActiveBlock::AnnouncementPrompt {
             if let Some(dismissed_id) = app.dismiss_active_announcement() {
               app.user_config.mark_announcement_seen(dismissed_id);
               if let Err(error) = app.user_config.save_config() {
@@ -2374,15 +2469,26 @@ async fn start_ui(
               None => None,
             };
             if pop_result.is_none() {
-              app.close_io_channel();
-              break;
+              app.push_navigation_stack(RouteId::ExitPrompt, ActiveBlock::ExitPrompt);
             }
           }
         } else {
           handlers::handle_app(key, &mut app);
         }
       }
+      event::Event::Mouse(mouse) => {
+        let mut app = app.lock().await;
+        handlers::mouse_handler(mouse, &mut app);
+      }
       event::Event::Tick => {
+        // Tick the main run loop so macOS delivers media key events.
+        // Required in addition to the media thread's run loop tick.
+        #[cfg(all(feature = "macos-media", target_os = "macos"))]
+        {
+          use objc2_foundation::{NSDate, NSRunLoop};
+          NSRunLoop::currentRunLoop().runUntilDate(&NSDate::dateWithTimeIntervalSinceNow(0.001));
+        }
+
         let mut app = app.lock().await;
         app.update_on_tick();
 
@@ -2408,6 +2514,15 @@ async fn start_ui(
             let pos_ms = pos.load(Ordering::Relaxed) as u128;
             if pos_ms > 0 && app.is_streaming_active {
               app.song_progress_ms = pos_ms;
+            }
+          }
+        }
+        #[cfg(not(feature = "streaming"))]
+        if let Some(ref pos) = shared_position {
+          if app.is_streaming_active {
+            let position_ms = pos.load(Ordering::Relaxed);
+            if position_ms > 0 {
+              app.song_progress_ms = position_ms as u128;
             }
           }
         }

@@ -1,10 +1,42 @@
 # Changelog
 
-## [0.36.3-debug.1] - 2026-02-16
+## [0.37.0] - 2026-02-27
 
 ### Added
 
-- **Session Log File for Runtime Diagnostics**: spotatui now writes runtime logs to `/tmp/spotatui_logs/spotatuilog{PID}` so testers can tail logs while reproducing issue #96 ([#102](https://github.com/LargeModGames/spotatui/pull/102)).
+- **Mouse Support Across the TUI**: Added click/scroll interactions throughout the interface for navigation and settings adjustments.
+- **Unsaved Settings Confirmation Prompt**: Added a confirmation flow when leaving settings with unsaved edits.
+- **Exit Confirmation Dialog**: Added a quit prompt to prevent accidental exits.
+- **Pookie Pink Theme Preset**: Added a new built-in `Pookie Pink` theme preset and improved selection highlight visibility.
+- **Animated Home Banner Gradient**: Added animation to the home banner gradient.
+- **Remote Announcements and Free-Account Messaging**: Added remote announcement support and in-app messaging for free-account playback limitations.
+- **New Logging System**: Added a centralized runtime logging pipeline and session log files in `/tmp/spotatui_logs/spotatuilog{PID}` for diagnostics ([#102](https://github.com/LargeModGames/spotatui/pull/102)).
+- **Playbar Cover Art Rendering (Optional)**: Added optional cover art rendering next to the currently playing song/episode title via the `cover-art` feature flag and `ratatui-image` integration ([#111](https://github.com/LargeModGames/spotatui/pull/111)).
+- **Cover Art Settings Controls**: Added behavior toggles to enable/disable artwork rendering and force rendering on terminals without full image support (`behavior.draw_cover_art`, `behavior.draw_cover_art_forced`) ([#111](https://github.com/LargeModGames/spotatui/pull/111)).
+- **Nix Flake Support**: Added `flake.nix` for flake-based NixOS/Nix installs, including `nix run`/`nix develop` workflow documentation ([#117](https://github.com/LargeModGames/spotatui/pull/117)).
+
+### Changed
+
+- **Architecture Refactor**: Reorganized the codebase into `core`, `infra`, and `tui` modules, including network layer extraction for maintainability.
+- **Announcement Fetching Controls**: Refactored announcement fetching to support environment-variable overrides and improved error handling.
+- **Documentation Updates**: Updated README content, including playback limitations for free Spotify accounts and Homebrew installation instructions for macOS.
+
+
+### Fixed
+
+- **Playback Device Auto-Selection**: Fixed auto-select behavior for the `spotatui` playback device.
+- **Rapid Skip Playbar Desync**: Fixed playbar state not updating correctly when skipping tracks rapidly.
+- **Like Action 400 Errors**: Fixed `400 Bad Request` failures when liking songs.
+- **macOS Media Integration Regressions**: Fixed macOS media support regressions in TUI handlers.
+- **Global Song Counter Reliability**: Fixed issues affecting global song counter updates.
+- **macOS Media Keys and Now Playing Reliability**: Fixed media-key handling and Control Center integration by wiring required macOS app/run-loop behavior and publishing now-playing metadata so spotatui responds to play/pause/next/previous correctly ([#120](https://github.com/LargeModGames/spotatui/pull/120)).
+
+### Internal
+
+- **Dependency Maintenance**: Bumped Rust minor dependency updates ([#104](https://github.com/LargeModGames/spotatui/pull/104)) and refreshed `Cargo.lock`.
+- **Code Quality/Formatting**: Fixed clippy warnings and applied rustfmt cleanups ([#106](https://github.com/LargeModGames/spotatui/pull/106)).
+- **Nix Release Automation**: Updated release workflow to sync `flake.nix` package version from `Cargo.toml` during releases ([#117](https://github.com/LargeModGames/spotatui/pull/117)).
+- **Dependency Maintenance (Follow-up)**: Bumped `clap` to `4.5.60` and `anyhow` to `1.0.102` ([#115](https://github.com/LargeModGames/spotatui/pull/115)).
 
 ## [0.36.2] - 2026-02-15
 
