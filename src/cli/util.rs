@@ -9,7 +9,7 @@ use rspotify::{
 };
 use std::time::Duration;
 
-use crate::user_config::UserConfig;
+use crate::core::user_config::UserConfig;
 
 // Helper function to extract URI from typed IDs or external URLs
 fn get_uri_or_fallback<T: Id>(
