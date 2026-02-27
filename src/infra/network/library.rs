@@ -417,10 +417,8 @@ impl LibraryNetwork for Network {
           if let Some(is_saved) = is_saved_vec.get(i) {
             if *is_saved {
               app.saved_album_ids_set.insert(id.id().to_string());
-            } else {
-              if app.saved_album_ids_set.contains(id.id()) {
-                app.saved_album_ids_set.remove(id.id());
-              }
+            } else if app.saved_album_ids_set.contains(id.id()) {
+              app.saved_album_ids_set.remove(id.id());
             }
           };
         }
@@ -468,10 +466,8 @@ impl LibraryNetwork for Network {
           if let Some(is_saved) = is_saved_vec.get(i) {
             if *is_saved {
               app.saved_show_ids_set.insert(id.id().to_string());
-            } else {
-              if app.saved_show_ids_set.contains(id.id()) {
-                app.saved_show_ids_set.remove(id.id());
-              }
+            } else if app.saved_show_ids_set.contains(id.id()) {
+              app.saved_show_ids_set.remove(id.id());
             }
           };
         }
@@ -632,13 +628,11 @@ impl LibraryNetwork for Network {
         let mut app = self.app.lock().await;
         app.liked_song_ids_set.remove(id_str);
       }
+    } else if let Err(e) = self.library_save_uris(&[uri]).await {
+      self.handle_error(anyhow!(e)).await;
     } else {
-      if let Err(e) = self.library_save_uris(&[uri]).await {
-        self.handle_error(anyhow!(e)).await;
-      } else {
-        let mut app = self.app.lock().await;
-        app.liked_song_ids_set.insert(id_str.to_string());
-      }
+      let mut app = self.app.lock().await;
+      app.liked_song_ids_set.insert(id_str.to_string());
     }
   }
 
@@ -655,10 +649,8 @@ impl LibraryNetwork for Network {
           if let Some(is_liked) = is_saved_vec.get(i) {
             if *is_liked {
               app.liked_song_ids_set.insert(id.id().to_string());
-            } else {
-              if app.liked_song_ids_set.contains(id.id()) {
-                app.liked_song_ids_set.remove(id.id());
-              }
+            } else if app.liked_song_ids_set.contains(id.id()) {
+              app.liked_song_ids_set.remove(id.id());
             }
           };
         }
@@ -742,7 +734,7 @@ impl LibraryNetwork for Network {
     // Sort
     use crate::core::sort::{SortContext, Sorter};
     if let Some(SortContext::PlaylistTracks) = app.sort_context {
-      let sorter = Sorter::new(app.playlist_sort.clone());
+      let sorter = Sorter::new(app.playlist_sort);
       sorter.sort_tracks(&mut all_tracks);
     }
 

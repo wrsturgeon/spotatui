@@ -53,7 +53,7 @@ pub fn draw_help_menu(f: &mut Frame<'_>, app: &App) {
 pub fn draw_error_screen(f: &mut Frame<'_>, app: &App) {
   let chunks = Layout::default()
     .direction(Direction::Vertical)
-    .constraints([Constraint::Percentage(100)].as_ref())
+    .constraints([Constraint::Percentage(100)])
     .margin(5)
     .split(f.area());
 
@@ -184,7 +184,7 @@ fn draw_confirmation_dialog(
   let vchunks = Layout::default()
     .direction(Direction::Vertical)
     .margin(1)
-    .constraints([Constraint::Min(3), Constraint::Length(3)].as_ref())
+    .constraints([Constraint::Min(3), Constraint::Length(3)])
     .split(rect);
 
   let text = Paragraph::new(text)
@@ -196,7 +196,7 @@ fn draw_confirmation_dialog(
   let hchunks = Layout::default()
     .direction(Direction::Horizontal)
     .horizontal_margin(3)
-    .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)].as_ref())
+    .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
     .split(vchunks[1]);
 
   let ok = Paragraph::new(Span::raw("Ok"))

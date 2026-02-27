@@ -156,7 +156,7 @@ impl Sorter {
     Self { state }
   }
 
-  pub fn sort_tracks(&self, tracks: &mut Vec<FullTrack>) {
+  pub fn sort_tracks(&self, tracks: &mut [FullTrack]) {
     if self.state.field == SortField::Default {
       return;
     }

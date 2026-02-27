@@ -512,6 +512,8 @@ pub struct App {
   pub current_playback_context: Option<CurrentPlaybackContext>,
   pub last_track_id: Option<String>,
   pub devices: Option<DevicePayload>,
+  #[cfg(feature = "cover-art")]
+  pub cover_art: crate::tui::cover_art::CoverArt,
   // Inputs:
   // input is the string for input;
   // input_idx is the index of the cursor in terms of character;
@@ -817,6 +819,8 @@ impl Default for App {
       streaming_player: None,
       #[cfg(all(feature = "mpris", target_os = "linux"))]
       mpris_manager: None,
+      #[cfg(feature = "cover-art")]
+      cover_art: crate::tui::cover_art::CoverArt::new(),
     }
   }
 }
@@ -2341,6 +2345,20 @@ impl App {
           description: "Icon for paused state".to_string(),
           value: SettingValue::String(self.user_config.behavior.paused_icon.clone()),
         },
+        #[cfg(feature = "cover-art")]
+        SettingItem {
+          id: "behavior.draw_cover_art".to_string(),
+          name: "Draw Cover Art".to_string(),
+          description: "Enable rendering song/episode cover art".to_string(),
+          value: SettingValue::Bool(self.user_config.behavior.draw_cover_art),
+        },
+        #[cfg(feature = "cover-art")]
+        SettingItem {
+          id: "behavior.draw_cover_art_forced".to_string(),
+          name: "Force Draw Cover Art".to_string(),
+          description: "Force rendering of cover art despite terminal support".to_string(),
+          value: SettingValue::Bool(self.user_config.behavior.draw_cover_art_forced),
+        },
       ],
       SettingsCategory::Keybindings => vec![
         SettingItem {
@@ -2679,6 +2697,18 @@ impl App {
         "behavior.paused_icon" => {
           if let SettingValue::String(v) = &setting.value {
             self.user_config.behavior.paused_icon = v.clone();
+          }
+        }
+        #[cfg(feature = "cover-art")]
+        "behavior.draw_cover_art" => {
+          if let SettingValue::Bool(v) = setting.value {
+            self.user_config.behavior.draw_cover_art = v;
+          }
+        }
+        #[cfg(feature = "cover-art")]
+        "behavior.draw_cover_art_forced" => {
+          if let SettingValue::Bool(v) = setting.value {
+            self.user_config.behavior.draw_cover_art_forced = v;
           }
         }
         // Keybindings

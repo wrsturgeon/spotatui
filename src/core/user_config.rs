@@ -609,6 +609,10 @@ pub struct BehaviorConfigString {
   pub set_window_title: Option<bool>,
   pub visualizer_style: Option<VisualizerStyle>,
   pub dismissed_announcements: Option<Vec<String>>,
+  #[cfg(feature = "cover-art")]
+  pub draw_cover_art: Option<bool>,
+  #[cfg(feature = "cover-art")]
+  pub draw_cover_art_forced: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -636,6 +640,10 @@ pub struct BehaviorConfig {
   pub set_window_title: bool,
   pub visualizer_style: VisualizerStyle,
   pub dismissed_announcements: Vec<String>,
+  #[cfg(feature = "cover-art")]
+  pub draw_cover_art: bool,
+  #[cfg(feature = "cover-art")]
+  pub draw_cover_art_forced: bool,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -723,6 +731,10 @@ impl UserConfig {
         set_window_title: true,
         visualizer_style: VisualizerStyle::default(),
         dismissed_announcements: Vec::new(),
+        #[cfg(feature = "cover-art")]
+        draw_cover_art: true,
+        #[cfg(feature = "cover-art")]
+        draw_cover_art_forced: false,
       },
       path_to_config: None,
     }
@@ -940,6 +952,16 @@ impl UserConfig {
         .collect();
     }
 
+    #[cfg(feature = "cover-art")]
+    if let Some(draw_cover_art) = behavior_config.draw_cover_art {
+      self.behavior.draw_cover_art = draw_cover_art;
+    }
+
+    #[cfg(feature = "cover-art")]
+    if let Some(draw_cover_art_forced) = behavior_config.draw_cover_art_forced {
+      self.behavior.draw_cover_art_forced = draw_cover_art_forced;
+    }
+
     Ok(())
   }
 
@@ -1009,6 +1031,10 @@ impl UserConfig {
       set_window_title: Some(self.behavior.set_window_title),
       visualizer_style: Some(self.behavior.visualizer_style),
       dismissed_announcements: Some(self.behavior.dismissed_announcements.clone()),
+      #[cfg(feature = "cover-art")]
+      draw_cover_art: Some(self.behavior.draw_cover_art),
+      #[cfg(feature = "cover-art")]
+      draw_cover_art_forced: Some(self.behavior.draw_cover_art_forced),
     };
 
     // Helper to convert Key to config string
@@ -1151,6 +1177,11 @@ impl UserConfig {
     {
       self.behavior.seen_announcement_ids.push(id);
     }
+  }
+
+  #[cfg(feature = "cover-art")]
+  pub fn do_draw_cover_art(&self, full_image_support: bool) -> bool {
+    self.behavior.draw_cover_art && (self.behavior.draw_cover_art_forced || full_image_support)
   }
 }
 
