@@ -9,13 +9,20 @@
 
 use anyhow::Result;
 use block2::RcBlock;
+use log::info;
+use objc2::msg_send;
+use objc2::runtime::{AnyClass, AnyObject};
+use objc2_foundation::{NSDate, NSMutableDictionary, NSNumber, NSRunLoop, NSString};
 use objc2_media_player::{
-  MPNowPlayingInfoCenter, MPNowPlayingPlaybackState, MPRemoteCommandCenter, MPRemoteCommandEvent,
-  MPRemoteCommandHandlerStatus,
+  MPMediaItemPropertyAlbumTitle, MPMediaItemPropertyArtist, MPMediaItemPropertyPlaybackDuration,
+  MPMediaItemPropertyTitle, MPNowPlayingInfoCenter, MPNowPlayingInfoPropertyElapsedPlaybackTime,
+  MPNowPlayingInfoPropertyPlaybackRate, MPNowPlayingPlaybackState, MPRemoteCommandCenter,
+  MPRemoteCommandEvent, MPRemoteCommandHandlerStatus,
 };
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Events that can be received from external macOS media controls (media keys, Control Center, etc.)
@@ -31,7 +38,7 @@ pub enum MacMediaEvent {
 
 /// Commands to send TO the Now Playing center to update its state
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::enum_variant_names)]
 pub enum MacMediaCommand {
   SetMetadata {
     title: String,
@@ -63,10 +70,19 @@ impl MacMediaManager {
     // Clone event_tx for use in callbacks
     let event_tx = Arc::new(event_tx);
 
-    // Spawn the macOS integration in a dedicated thread
-    // The command center and now playing center must be accessed from the main thread
-    // in a real app, but for a terminal app we use a background thread with its own run loop
+    // MPRemoteCommandCenter requires an initialized NSApplication to route media key events;
+    // without one, macOS ignores the handlers and falls through to Music.app.
     thread::spawn(move || {
+      // Initialize NSApplication with raw msg_send because objc2-app-kit's
+      // sharedApplication() requires MainThreadMarker (unavailable in CLI apps).
+      unsafe {
+        let cls = AnyClass::get(c"NSApplication").expect("NSApplication class not found");
+        let app: objc2::rc::Retained<AnyObject> = msg_send![cls, sharedApplication];
+        // NSApplicationActivationPolicyProhibited = 2 (no Dock icon, no menu bar)
+        let _: () = msg_send![&app, setActivationPolicy: 2i64];
+      }
+      info!("macos media: NSApplication initialized with Prohibited activation policy");
+
       // Get the shared command center
       let command_center = unsafe { MPRemoteCommandCenter::sharedCommandCenter() };
 
@@ -75,6 +91,7 @@ impl MacMediaManager {
       let play_handler: RcBlock<
         dyn Fn(NonNull<MPRemoteCommandEvent>) -> MPRemoteCommandHandlerStatus,
       > = RcBlock::new(move |_event: NonNull<MPRemoteCommandEvent>| {
+        info!("macos media: received Play event");
         let _ = tx.send(MacMediaEvent::Play);
         MPRemoteCommandHandlerStatus::Success
       });
@@ -89,6 +106,7 @@ impl MacMediaManager {
       let pause_handler: RcBlock<
         dyn Fn(NonNull<MPRemoteCommandEvent>) -> MPRemoteCommandHandlerStatus,
       > = RcBlock::new(move |_event: NonNull<MPRemoteCommandEvent>| {
+        info!("macos media: received Pause event");
         let _ = tx.send(MacMediaEvent::Pause);
         MPRemoteCommandHandlerStatus::Success
       });
@@ -103,6 +121,7 @@ impl MacMediaManager {
       let toggle_handler: RcBlock<
         dyn Fn(NonNull<MPRemoteCommandEvent>) -> MPRemoteCommandHandlerStatus,
       > = RcBlock::new(move |_event: NonNull<MPRemoteCommandEvent>| {
+        info!("macos media: received PlayPause event");
         let _ = tx.send(MacMediaEvent::PlayPause);
         MPRemoteCommandHandlerStatus::Success
       });
@@ -117,6 +136,7 @@ impl MacMediaManager {
       let next_handler: RcBlock<
         dyn Fn(NonNull<MPRemoteCommandEvent>) -> MPRemoteCommandHandlerStatus,
       > = RcBlock::new(move |_event: NonNull<MPRemoteCommandEvent>| {
+        info!("macos media: received Next event");
         let _ = tx.send(MacMediaEvent::Next);
         MPRemoteCommandHandlerStatus::Success
       });
@@ -131,6 +151,7 @@ impl MacMediaManager {
       let prev_handler: RcBlock<
         dyn Fn(NonNull<MPRemoteCommandEvent>) -> MPRemoteCommandHandlerStatus,
       > = RcBlock::new(move |_event: NonNull<MPRemoteCommandEvent>| {
+        info!("macos media: received Previous event");
         let _ = tx.send(MacMediaEvent::Previous);
         MPRemoteCommandHandlerStatus::Success
       });
@@ -145,6 +166,7 @@ impl MacMediaManager {
       let stop_handler: RcBlock<
         dyn Fn(NonNull<MPRemoteCommandEvent>) -> MPRemoteCommandHandlerStatus,
       > = RcBlock::new(move |_event: NonNull<MPRemoteCommandEvent>| {
+        info!("macos media: received Stop event");
         let _ = tx.send(MacMediaEvent::Stop);
         MPRemoteCommandHandlerStatus::Success
       });
@@ -154,48 +176,29 @@ impl MacMediaManager {
           .addTargetWithHandler(&stop_handler);
       }
 
+      info!("macos media: remote command handlers registered");
+
       // Get the now playing info center
       let info_center = unsafe { MPNowPlayingInfoCenter::defaultCenter() };
 
-      // Create a simple runtime for handling commands
+      // Interleave command processing with NSRunLoop ticks so macOS can deliver
+      // MPRemoteCommandCenter events to our handler blocks.
       let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create macOS media runtime");
 
       rt.block_on(async move {
-        while let Some(cmd) = command_rx.recv().await {
-          match cmd {
-            MacMediaCommand::SetMetadata {
-              title: _,
-              artists: _,
-              album: _,
-              duration_ms: _,
-            } => {
-              // TODO: Update Now Playing info with track metadata
-              // This requires creating an NSDictionary with the proper keys
-              // For now, media key control works without metadata display
+        let mut interval = tokio::time::interval(Duration::from_millis(100));
+        loop {
+          tokio::select! {
+            Some(cmd) = command_rx.recv() => {
+              handle_now_playing_command(&cmd, &info_center);
             }
-            MacMediaCommand::SetPlaybackStatus(is_playing) => unsafe {
-              let state = if is_playing {
-                MPNowPlayingPlaybackState::Playing
-              } else {
-                MPNowPlayingPlaybackState::Paused
-              };
-              info_center.setPlaybackState(state);
-            },
-            MacMediaCommand::SetPosition(_position_ms) => {
-              // Position updates would require updating the nowPlayingInfo dict
-              // with MPNowPlayingInfoPropertyElapsedPlaybackTime
-              // Simplified for now
+            _ = interval.tick() => {
+              NSRunLoop::currentRunLoop()
+                .runUntilDate(&NSDate::dateWithTimeIntervalSinceNow(0.01));
             }
-            MacMediaCommand::SetVolume(_volume_percent) => {
-              // Volume is not directly supported by Now Playing center
-              // but kept for API parity with MPRIS
-            }
-            MacMediaCommand::SetStopped => unsafe {
-              info_center.setPlaybackState(MPNowPlayingPlaybackState::Stopped);
-            },
           }
         }
       });
@@ -232,7 +235,6 @@ impl MacMediaManager {
   }
 
   /// Update playback position
-  #[allow(dead_code)]
   pub fn set_position(&self, position_ms: u64) {
     let _ = self
       .command_tx
@@ -250,5 +252,75 @@ impl MacMediaManager {
   /// Mark playback as stopped
   pub fn set_stopped(&self) {
     let _ = self.command_tx.send(MacMediaCommand::SetStopped);
+  }
+}
+
+/// Process a single Now Playing command, updating the info center state.
+/// Must be called from the dedicated macOS media thread that owns `info_center`.
+fn handle_now_playing_command(cmd: &MacMediaCommand, info_center: &MPNowPlayingInfoCenter) {
+  unsafe {
+    match cmd {
+      MacMediaCommand::SetMetadata {
+        title,
+        artists,
+        album,
+        duration_ms,
+      } => {
+        let dict: objc2::rc::Retained<NSMutableDictionary<NSString, AnyObject>> =
+          NSMutableDictionary::new();
+
+        let title_ns = NSString::from_str(title);
+        dict.insert(MPMediaItemPropertyTitle, &*title_ns);
+
+        let artist_ns = NSString::from_str(&artists.join(", "));
+        dict.insert(MPMediaItemPropertyArtist, &*artist_ns);
+
+        let album_ns = NSString::from_str(album);
+        dict.insert(MPMediaItemPropertyAlbumTitle, &*album_ns);
+
+        let duration = NSNumber::numberWithDouble(f64::from(*duration_ms) / 1000.0);
+        dict.insert(MPMediaItemPropertyPlaybackDuration, &*duration);
+
+        let rate = NSNumber::numberWithDouble(1.0);
+        dict.insert(MPNowPlayingInfoPropertyPlaybackRate, &*rate);
+
+        info_center.setNowPlayingInfo(Some(&dict));
+      }
+      MacMediaCommand::SetPlaybackStatus(is_playing) => {
+        let state = if *is_playing {
+          MPNowPlayingPlaybackState::Playing
+        } else {
+          MPNowPlayingPlaybackState::Paused
+        };
+        info_center.setPlaybackState(state);
+
+        // Update playback rate in the existing nowPlayingInfo so macOS
+        // knows whether to advance the elapsed time counter.
+        if let Some(existing) = info_center.nowPlayingInfo() {
+          let dict: objc2::rc::Retained<NSMutableDictionary<NSString, AnyObject>> =
+            NSMutableDictionary::dictionaryWithDictionary(&existing);
+          let rate = NSNumber::numberWithDouble(if *is_playing { 1.0 } else { 0.0 });
+          dict.insert(MPNowPlayingInfoPropertyPlaybackRate, &*rate);
+          info_center.setNowPlayingInfo(Some(&dict));
+        }
+      }
+      MacMediaCommand::SetPosition(position_ms) => {
+        // Update elapsed playback time in the existing nowPlayingInfo dict
+        if let Some(existing) = info_center.nowPlayingInfo() {
+          let dict: objc2::rc::Retained<NSMutableDictionary<NSString, AnyObject>> =
+            NSMutableDictionary::dictionaryWithDictionary(&existing);
+          let elapsed = NSNumber::numberWithDouble(*position_ms as f64 / 1000.0);
+          dict.insert(MPNowPlayingInfoPropertyElapsedPlaybackTime, &*elapsed);
+          info_center.setNowPlayingInfo(Some(&dict));
+        }
+      }
+      MacMediaCommand::SetVolume(_) => {
+        // Volume is not directly supported by Now Playing center
+      }
+      MacMediaCommand::SetStopped => {
+        info_center.setPlaybackState(MPNowPlayingPlaybackState::Stopped);
+        info_center.setNowPlayingInfo(None);
+      }
+    }
   }
 }

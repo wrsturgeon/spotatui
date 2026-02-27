@@ -38,7 +38,7 @@ tui-bar-graph = "0.3.1"
 colorgrad = "0.8.0"
 tokio = { version = "1.49", features = ["full"] }
 rand = "0.8.4"
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 chrono = "0.4.43"
 log = "0.4.28"
 fern = "0.7.1"
